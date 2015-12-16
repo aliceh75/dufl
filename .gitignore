@@ -1,0 +1,5 @@
+venv
+*.pyc
+.*~
+.cache
+dufl.egg-info
