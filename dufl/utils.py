@@ -3,7 +3,7 @@ import os
 import re
 import yaml
 
-from subprocess import check_call
+from subprocess import check_call, check_output, CalledProcessError
 
 
 def dufl_debug(message, ctx):
@@ -54,7 +54,7 @@ class Git(object):
         self.root = root
 
     def run(self, *command):
-        """ Run a git command
+        """ Run a git command transparently
 
         Args:
             *command (array of str): List of parameters to pass to git
@@ -63,8 +63,28 @@ class Git(object):
             GitError
         """
         out = check_call([
-            self.git, 
+            self.git,
             '-C', self.root
         ] + list(command))
         if out != 0:
             raise GitError()
+
+    def get_output(self, *command):
+        """ Run a git command and return output
+
+        Args:
+            *command (array of str): List of parameters to pass to git
+                executable.
+        Returns:
+            str: The output of the git command
+        Raises:
+            GitError
+        """
+        try:
+            out = check_output([
+                self.git,
+                '-C', self.root
+            ] + list(command))
+        except CalledProcessError:
+            raise GitError()
+        return out
