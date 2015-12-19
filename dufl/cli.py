@@ -3,7 +3,7 @@ import os
 import shutil
 import yaml
 
-from .utils import dufl_debug, Git
+from .utils import dufl_debug, Git, GitError
 
 
 @click.group('cli', invoke_without_command=True)
@@ -54,31 +54,32 @@ def init(ctx, repository, git):
         os.makedirs(dufl_root, ctx.obj['create_mode'])
 
         click.echo('Initializing git repository...')
-        git = Git(git, dufl_root)
-        git.run('init')
-        git.run('remote', 'add', 'origin', repository)
+        giti = Git(git, dufl_root)
+        giti.run('init')
+        giti.run('remote', 'add', 'origin', repository)
 
         click.echo('Looking for remote repository...')
-        exists = False
+        repo_exists = False
         try:
-            git.run('ls-remote', repository)
-            exists = True
+            giti.run('ls-remote', repository)
+            repo_exists = True
         except GitError:
             pass
 
-        if exists:
-            click.echo('Pull master branch of %s', repository)
-            git.run('pull')
+        if repo_exists:
+            click.echo('Pull master branch of %s' % repository)
+            giti.run('pull')
         else:
-            click.echo('Creating new structure in %s', dufl_root)
+            click.echo('Creating new structure in %s' % dufl_root)
             os.makedirs(os.path.join(dufl_root, ctx.obj['home_subdir']), ctx.obj['create_mode'])
             os.makedirs(os.path.join(dufl_root, ctx.obj['slash_subdir']), ctx.obj['create_mode'])
-            click.echo('Creating default settings file in %s', dufl_root)
-            with open(os.path.join(dufl_root, ctx.obj['settings_file']), 'w') as f:
-                f.write(yaml.dump({
+            click.echo('Creating default settings file in %s' % dufl_root)
+            with open(os.path.join(dufl_root, ctx.obj['settings_file']), 'w') as the_file:
+                the_file.write(yaml.dump({
                     'git': git,
                 }))
         click.echo('Done!')
-    except Exception:
+    except Exception as e:
+        click.echo(e)
         click.echo('Failed. To retry, you will need to clean up by deleting the folder %s' % dufl_root)
         exit(1)
