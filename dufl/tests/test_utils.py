@@ -126,7 +126,7 @@ def test_git_get_output_runs_expected_command():
         assert check_output.call_args[0][0][3:] == ['remote', 'add', 'origin', 'http://github.com/example/example.git']
 
 
-def test_git_run_raises_on_failure():
+def test_git_run_raises_on_status_failure():
     with _patch_utils('check_call') as check_call:
         git = Git('/usr/bin/git', '~/.dufl')
         check_call.return_value = 1
@@ -136,6 +136,15 @@ def test_git_run_raises_on_failure():
         except GitError:
             assert True
 
+def test_git_run_raises_on_exception_failure():
+    with _patch_utils('check_call') as check_call:
+        git = Git('/usr/bin/git', '~/.dufl')
+        check_call.side_effect = CalledProcessError(1, 1)
+        try:
+            git.run('pull')
+            assert False
+        except GitError:
+            assert True
 
 def test_git_get_output_raises_on_failure():
     with _patch_utils('check_output') as check_output:

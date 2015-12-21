@@ -72,11 +72,14 @@ class Git(object):
         Raises:
             GitError
         """
-        out = check_call([
-            self.git,
-            '-C', self.root
-        ] + list(command))
-        if out != 0:
+        try:
+            out = check_call([
+                self.git,
+                '-C', self.root
+            ] + list(command))
+            if out != 0:
+                raise GitError()
+        except CalledProcessError:
             raise GitError()
 
     def get_output(self, *command):
