@@ -3,7 +3,7 @@ import os
 import shutil
 import yaml
 
-from .utils import dufl_debug, Git, GitError
+from .utils import dufl_debug, Git, GitError, get_dufl_file_path
 
 
 @click.group('cli', invoke_without_command=True)
@@ -83,3 +83,30 @@ def init(ctx, repository, git):
         click.echo(e)
         click.echo('Failed. To retry, you will need to clean up by deleting the folder %s' % dufl_root)
         exit(1)
+
+
+@cli.command('add')
+@click.pass_context
+@click.argument('file_name')
+@click.option('--message', '-m', default='Update.', help='Commit message')
+def add(ctx, file_name, message):
+    """ Add and commit a new file """
+    dufl_root = ctx.obj['dufl_root']
+    source = os.path.abspath(file_name)
+    dest = get_dufl_file_path(source, ctx.obj)
+    if not os.path.isdir(os.path.dirname(dest)):
+        os.makedirs(os.path.dirname(dest))
+    shutil.copyfile(source, dest)
+    git = Git(ctx.obj.get('git', '/usr/bin/git'), dufl_root)
+    git.run('add', dest)
+    git.run('commit', '-m', message)
+
+
+@cli.command('push')
+@click.pass_context
+def push(ctx):
+    """ Push the git repo """
+    dufl_root = ctx.obj['dufl_root']
+    git = Git(ctx.obj.get('git', '/usr/bin/git'), dufl_root)
+    print 'hello'
+    git.run('push')

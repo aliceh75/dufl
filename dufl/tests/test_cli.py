@@ -41,6 +41,13 @@ def _mock_git(remote_exists=True):
         yield git
 
 
+def _prepare_empty_dufl_folder(dufl_root):
+    """ Prepares a (mock) empty dufl folder at the given path """
+    os.makedirs(dufl_root)
+    os.makedirs(os.path.join(dufl_root, 'root'))
+    os.makedirs(os.path.join(dufl_root, 'home'))
+
+
 def test_debug_output_can_be_parsed():
     runner = CliRunner()
     r = runner.invoke(
@@ -68,7 +75,7 @@ def test_debug_mode_set_on_context():
     assert ctx_obj['debug'] is True
 
 
-def test_provided_dufl_root_added_to_context():
+def test_provided_dufl_root_path_added_to_context():
     runner = CliRunner()
     r = runner.invoke(
         cli.cli, ['-r', '/some/where', '--debug']
@@ -77,7 +84,7 @@ def test_provided_dufl_root_added_to_context():
     assert ctx_obj['dufl_root'] == '/some/where'
 
 
-def test_default_dufl_root_is_in_current_user_home_dir():
+def test_default_dufl_root_path_is_in_current_user_home_dir():
     runner = CliRunner()
     with patch(cli.__name__ + '.os.path.expanduser') as e:
         e.return_value = 'expanded-path'
@@ -90,7 +97,7 @@ def test_default_dufl_root_is_in_current_user_home_dir():
     assert ctx_obj['dufl_root'] == 'expanded-path'
 
 
-def test_default_dufl_root_is_expanded():
+def test_default_dufl_root_path_is_expanded():
     runner = CliRunner()
     with patch(cli.__name__ + '.os.path.expanduser') as e:
         e.return_value = 'expanded-path'
@@ -217,3 +224,115 @@ def test_dufl_init_creates_settings_file_with_git_option():
             settings = yaml.load(f.read())
         assert settings == {'git': '/usr/bin/git'}
 
+
+def test_dufl_add_copies_file_to_dufl_root_subfolder():
+    runner = CliRunner()
+    with runner.isolated_filesystem():
+        here = os.getcwd()
+        dufl_root = os.path.join(here, '.dufl')
+        _prepare_empty_dufl_folder(dufl_root)
+        file_to_add = os.path.join(here, 'one', 'two', 'three.txt')
+        os.makedirs(os.path.dirname(file_to_add))
+        with open(file_to_add, 'w') as f:
+            f.write('hello world')
+        with _mock_git(remote_exists=False) as git:
+            r = runner.invoke(
+                cli.cli, [
+                    '-r', dufl_root,
+                    'add', file_to_add
+                ]
+            )
+            assert os.path.isfile(os.path.join(
+                dufl_root, 'root',
+                re.sub('^\\/', '', file_to_add)
+            ))
+
+
+def test_dufl_add_invokes_get_dufl_file_path():
+    runner = CliRunner()
+    with runner.isolated_filesystem():
+        here = os.getcwd()
+        dufl_root = os.path.join(here, '.dufl')
+        _prepare_empty_dufl_folder(dufl_root)
+        file_to_add = os.path.join(here, 'one', 'two', 'three.txt')
+        os.makedirs(os.path.dirname(file_to_add))
+        with open(file_to_add, 'w') as f:
+            f.write('hello world')
+        with _mock_git(remote_exists=False) as git:
+            with patch(cli.__name__ + '.get_dufl_file_path') as get_dufl_file_path:
+                get_dufl_file_path.return_value = os.path.join(dufl_root, 'home/four.txt')
+                r = runner.invoke(
+                    cli.cli, [
+                        '-r', dufl_root,
+                        'add', file_to_add
+                    ]
+                )
+            assert os.path.isfile(os.path.join(dufl_root, 'home', 'four.txt'))
+
+
+def test_dufl_add_adds_and_commits_file_to_git():
+    runner = CliRunner()
+    with runner.isolated_filesystem():
+        here = os.getcwd()
+        dufl_root = os.path.join(here, '.dufl')
+        _prepare_empty_dufl_folder(dufl_root)
+        file_to_add = os.path.join(here, 'one', 'two', 'three.txt')
+        os.makedirs(os.path.dirname(file_to_add))
+        with open(os.path.join(here, file_to_add), 'w') as f:
+            f.write('hello world')
+        with _mock_git(remote_exists=False) as git:
+            add_call = call('add', os.path.join(
+                dufl_root, 'root',
+                re.sub('^\\/', '', file_to_add)
+            ))
+            commit_call = call('commit', '-m', 'Update.')
+            r = runner.invoke(
+                cli.cli, [
+                    '-r', dufl_root,
+                    'add', file_to_add
+                ]
+            )
+            assert add_call in git.run.call_args_list
+            assert commit_call in git.run.call_args_list
+
+
+def test_dufl_add_uses_provided_commit_message():
+    runner = CliRunner()
+    with runner.isolated_filesystem():
+        here = os.getcwd()
+        dufl_root = os.path.join(here, '.dufl')
+        _prepare_empty_dufl_folder(dufl_root)
+        file_to_add = os.path.join(here, 'one', 'two', 'three.txt')
+        os.makedirs(os.path.dirname(file_to_add))
+        with open(os.path.join(here, file_to_add), 'w') as f:
+            f.write('hello world')
+        with _mock_git(remote_exists=False) as git:
+            commit_call = call('commit', '-m', 'Good job!')
+            r = runner.invoke(
+                cli.cli, [
+                    '-r', dufl_root,
+                    'add', file_to_add,
+                    '-m', 'Good job!'
+                ]
+            )
+            assert commit_call in git.run.call_args_list
+
+def test_dufl_push_pushes_to_git():
+    runner = CliRunner()
+    with runner.isolated_filesystem():
+        here = os.getcwd()
+        dufl_root = os.path.join(here, '.dufl')
+        _prepare_empty_dufl_folder(dufl_root)
+        file_to_add = os.path.join(here, 'one', 'two', 'three.txt')
+        os.makedirs(os.path.dirname(file_to_add))
+        with open(os.path.join(here, file_to_add), 'w') as f:
+            f.write('hello world')
+        with _mock_git() as git:
+            push_call = call('push')
+            r = runner.invoke(
+                cli.cli, [
+                    '-r', dufl_root,
+                    'push'
+                ]
+            )
+            assert push_call in git.run.call_args_list
