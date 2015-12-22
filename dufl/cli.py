@@ -3,7 +3,8 @@ import os
 import shutil
 import yaml
 
-from .utils import dufl_debug, Git, GitError, get_dufl_file_path
+from .app import get_dufl_file_path
+from .utils import dufl_debug, Git, GitError
 
 
 @click.group('cli', invoke_without_command=True)

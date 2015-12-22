@@ -3,7 +3,7 @@ from mock import patch
 from subprocess import CalledProcessError
 
 from .. import utils
-from ..utils import get_dufl_file_path, Git, GitError
+from ..utils import Git, GitError
 
 
 @contextmanager
@@ -11,72 +11,6 @@ def _patch_utils(name):
     """ Helper context manager to patch methods in the utils library """
     with patch(utils.__name__ + '.' + name) as p:
         yield p
-
-
-def test_get_dufl_file_path_returns_path_within_dufl_root():
-    with _patch_utils('os.path.expanduser') as expanduser:
-        expanduser.return_value = '/home/someone'
-        out = get_dufl_file_path('/some/where', {
-            'dufl_root': '/my/dufl',
-            'slash_subdir': 'root',
-            'home_subdir': 'home'
-        })
-        assert out.startswith('/my/dufl/')
-
-
-def test_get_dufl_file_path_returns_abs_path_within_dufl_slash_folder():
-    with _patch_utils('os.path.expanduser') as expanduser:
-        expanduser.return_value = '/home/someone'
-        out = get_dufl_file_path('/some/where', {
-            'dufl_root': '/my/dufl',
-            'slash_subdir': 'root',
-            'home_subdir': 'home'
-        })
-        assert out.startswith('/my/dufl/root/')
-
-
-def test_get_dufl_file_path_returns_home_path_within_dufl_home_folder():
-    with _patch_utils('os.path.expanduser') as expanduser:
-        expanduser.return_value = '/home/someone'
-        out = get_dufl_file_path('/home/someone/some/where', {
-            'dufl_root': '/my/dufl',
-            'slash_subdir': 'root',
-            'home_subdir': 'home'
-        })
-        assert out.startswith('/my/dufl/home/')
-
-
-def test_get_dufl_file_path_strips_home_folder_from_path():
-    with _patch_utils('os.path.expanduser') as expanduser:
-        expanduser.return_value = '/home/someone'
-        out = get_dufl_file_path('/home/someone/some/where', {
-            'dufl_root': '/my/dufl',
-            'slash_subdir': 'root',
-            'home_subdir': 'home'
-        })
-        assert out == '/my/dufl/home/some/where'
-
-
-def test_get_dufl_file_path_adds_correct_abs_file_name():
-    with _patch_utils('os.path.expanduser') as expanduser:
-        expanduser.return_value = '/home/someone'
-        out = get_dufl_file_path('/some/where', {
-            'dufl_root': '/my/dufl',
-            'slash_subdir': 'root',
-            'home_subdir': 'home'
-        })
-        assert out == '/my/dufl/root/some/where'
-
-
-def test_get_dufl_file_path_resolves_relative_paths():
-    with _patch_utils('os.path.expanduser') as expanduser:
-        expanduser.return_value = '/home/someone'
-        out = get_dufl_file_path('/some/world/../where', {
-            'dufl_root': '/my/dufl',
-            'slash_subdir': 'root',
-            'home_subdir': 'home'
-        })
-        assert out == '/my/dufl/root/some/where'
 
 
 def test_git_run_invokes_provided_git_binary():
