@@ -1,17 +1,4 @@
-import click
-import yaml
-
 from subprocess import check_call, check_output, CalledProcessError
-
-
-def dufl_debug(message, ctx):
-    """ Output a debug message, along with an internal context dump """
-    if ctx.obj['debug']:
-        click.echo(message)
-        click.echo('context[%s]' % ctx.obj['debug_context'])
-        click.echo(yaml.dump(ctx.obj))
-        click.echo('end[%s]' % ctx.obj['debug_context'])
-        ctx.obj['debug_context'] = ctx.obj['debug_context'] + 1
 
 
 class GitError(Exception):

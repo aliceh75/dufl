@@ -1,19 +1,13 @@
-from contextlib import contextmanager
-from mock import patch
+import os
+import yaml
 
-from .. import app
-from ..app import get_dufl_file_path
-
-
-@contextmanager
-def _patch_app(name):
-    """ Helper context manager to patch methods in the app library """
-    with patch(app.__name__ + '.' + name) as p:
-        yield p
+from click.testing import CliRunner
+from tutils import patch_app
+from ..app import get_dufl_file_path, create_initial_context
 
 
 def test_get_dufl_file_path_returns_path_within_dufl_root():
-    with _patch_app('os.path.expanduser') as expanduser:
+    with patch_app('os.path.expanduser') as expanduser:
         expanduser.return_value = '/home/someone'
         out = get_dufl_file_path('/some/where', {
             'dufl_root': '/my/dufl',
@@ -24,7 +18,7 @@ def test_get_dufl_file_path_returns_path_within_dufl_root():
 
 
 def test_get_dufl_file_path_returns_abs_path_within_dufl_slash_folder():
-    with _patch_app('os.path.expanduser') as expanduser:
+    with patch_app('os.path.expanduser') as expanduser:
         expanduser.return_value = '/home/someone'
         out = get_dufl_file_path('/some/where', {
             'dufl_root': '/my/dufl',
@@ -35,7 +29,7 @@ def test_get_dufl_file_path_returns_abs_path_within_dufl_slash_folder():
 
 
 def test_get_dufl_file_path_returns_home_path_within_dufl_home_folder():
-    with _patch_app('os.path.expanduser') as expanduser:
+    with patch_app('os.path.expanduser') as expanduser:
         expanduser.return_value = '/home/someone'
         out = get_dufl_file_path('/home/someone/some/where', {
             'dufl_root': '/my/dufl',
@@ -46,7 +40,7 @@ def test_get_dufl_file_path_returns_home_path_within_dufl_home_folder():
 
 
 def test_get_dufl_file_path_strips_home_folder_from_path():
-    with _patch_app('os.path.expanduser') as expanduser:
+    with patch_app('os.path.expanduser') as expanduser:
         expanduser.return_value = '/home/someone'
         out = get_dufl_file_path('/home/someone/some/where', {
             'dufl_root': '/my/dufl',
@@ -57,7 +51,7 @@ def test_get_dufl_file_path_strips_home_folder_from_path():
 
 
 def test_get_dufl_file_path_adds_correct_abs_file_name():
-    with _patch_app('os.path.expanduser') as expanduser:
+    with patch_app('os.path.expanduser') as expanduser:
         expanduser.return_value = '/home/someone'
         out = get_dufl_file_path('/some/where', {
             'dufl_root': '/my/dufl',
@@ -68,7 +62,7 @@ def test_get_dufl_file_path_adds_correct_abs_file_name():
 
 
 def test_get_dufl_file_path_resolves_relative_paths():
-    with _patch_app('os.path.expanduser') as expanduser:
+    with patch_app('os.path.expanduser') as expanduser:
         expanduser.return_value = '/home/someone'
         out = get_dufl_file_path('/some/world/../where', {
             'dufl_root': '/my/dufl',
@@ -76,3 +70,54 @@ def test_get_dufl_file_path_resolves_relative_paths():
             'home_subdir': 'home'
         })
         assert out == '/my/dufl/root/some/where'
+
+
+def test_create_initial_context_creates_expected_settings():
+    with patch_app('os.path.isfile', 'os.path.expanduser') as (isfile, expanduser):
+        isfile.return_value = False
+        expanduser.return_value = '/some/where'
+        context = create_initial_context(None)
+        assert set(['git', 'dufl_root', 'create_mode', 'home_subdir', 'slash_subdir', 'settings_file']) == set(context.keys())
+
+
+def test_create_initial_context_sets_default_root_in_homedir():
+    with patch_app('os.path.isfile', 'os.path.expanduser') as (isfile, expanduser):
+        isfile.return_value = False
+        expanduser.return_value = '/some/where'
+        context = create_initial_context(None)
+        assert context['dufl_root'] == '/some/where'
+        expanduser.assert_called_with('~/.dufl')
+
+
+def test_create_initial_context_uses_provided_root():
+    with patch_app('os.path.isfile') as isfile:
+        isfile.return_value = False
+        context = create_initial_context('/some/where/else')
+        assert context['dufl_root'] == '/some/where/else'
+
+
+def test_create_initial_context_expands_provided_root():
+    with patch_app('os.path.isfile') as isfile:
+        isfile.return_value = False
+        context = create_initial_context('/some/where/../else')
+        assert context['dufl_root'] == '/some/else'
+
+
+def test_create_initial_context_merges_allowed_keys_from_settings_file():
+    runner = CliRunner()
+    with runner.isolated_filesystem():
+        here = os.getcwd()
+        with open(os.path.join(here, 'settings.yaml'), 'w') as f:
+            f.write(yaml.dump({
+                'git': '$$$',
+                'dufl_root': '$$$',
+                'create_mode': '$$$',
+                'home_subdir': '$$$',
+                'slash_subdir': '$$$',
+                'settings_file': '$$$',
+                'other_stuff': '$$$'
+            }))
+        context = create_initial_context(here)
+        assert 'other_stuff' not in context.keys()
+        assert context['git'] == '$$$'
+        assert '$$$' not in [v for (k,v) in context.items() if k != 'git']

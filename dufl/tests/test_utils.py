@@ -1,20 +1,11 @@
-from contextlib import contextmanager
-from mock import patch
 from subprocess import CalledProcessError
 
-from .. import utils
+from tutils import patch_utils
 from ..utils import Git, GitError
 
 
-@contextmanager
-def _patch_utils(name):
-    """ Helper context manager to patch methods in the utils library """
-    with patch(utils.__name__ + '.' + name) as p:
-        yield p
-
-
 def test_git_run_invokes_provided_git_binary():
-    with _patch_utils('check_call') as check_call:
+    with patch_utils('check_call') as check_call:
         git = Git('/some/bin/git', '~/.dufl')
         check_call.return_value = 0
         git.run('pull')
@@ -22,14 +13,14 @@ def test_git_run_invokes_provided_git_binary():
 
 
 def test_git_get_output_invokes_provided_git_binary():
-    with _patch_utils('check_output') as check_output:
+    with patch_utils('check_output') as check_output:
         git = Git('/some/bin/git', '~/.dufl')
         git.get_output('pull')
         assert check_output.call_args[0][0][0] == '/some/bin/git'
 
 
 def test_git_run_uses_provided_git_root():
-    with _patch_utils('check_call') as check_call:
+    with patch_utils('check_call') as check_call:
         git = Git('/usr/bin/git', '/some/dufl/root')
         check_call.return_value = 0
         git.run('pull')
@@ -38,7 +29,7 @@ def test_git_run_uses_provided_git_root():
 
 
 def test_git_get_output_uses_provided_git_root():
-    with _patch_utils('check_output') as check_output:
+    with patch_utils('check_output') as check_output:
         git = Git('/usr/bin/git', '/some/dufl/root')
         git.get_output('pull')
         assert check_output.call_args[0][0][1] == '-C'
@@ -46,7 +37,7 @@ def test_git_get_output_uses_provided_git_root():
 
 
 def test_git_run_runs_expected_command():
-    with _patch_utils('check_call') as check_call:
+    with patch_utils('check_call') as check_call:
         git = Git('/usr/bin/git', '~/.dufl')
         check_call.return_value = 0
         git.run('remote', 'add', 'origin', 'http://github.com/example/example.git')
@@ -54,14 +45,14 @@ def test_git_run_runs_expected_command():
 
 
 def test_git_get_output_runs_expected_command():
-    with _patch_utils('check_output') as check_output:
+    with patch_utils('check_output') as check_output:
         git = Git('/usr/bin/git', '~/.dufl')
         git.get_output('remote', 'add', 'origin', 'http://github.com/example/example.git')
         assert check_output.call_args[0][0][3:] == ['remote', 'add', 'origin', 'http://github.com/example/example.git']
 
 
 def test_git_run_raises_on_status_failure():
-    with _patch_utils('check_call') as check_call:
+    with patch_utils('check_call') as check_call:
         git = Git('/usr/bin/git', '~/.dufl')
         check_call.return_value = 1
         try:
@@ -71,7 +62,7 @@ def test_git_run_raises_on_status_failure():
             assert True
 
 def test_git_run_raises_on_exception_failure():
-    with _patch_utils('check_call') as check_call:
+    with patch_utils('check_call') as check_call:
         git = Git('/usr/bin/git', '~/.dufl')
         check_call.side_effect = CalledProcessError(1, 1)
         try:
@@ -81,7 +72,7 @@ def test_git_run_raises_on_exception_failure():
             assert True
 
 def test_git_get_output_raises_on_failure():
-    with _patch_utils('check_output') as check_output:
+    with patch_utils('check_output') as check_output:
         git = Git('/usr/bin/git', '~/.dufl')
         check_output.side_effect = CalledProcessError(1, 1)
         try:
@@ -92,7 +83,7 @@ def test_git_get_output_raises_on_failure():
 
 
 def test_git_get_output_returns_command_output():
-    with _patch_utils('check_output') as check_output:
+    with patch_utils('check_output') as check_output:
         check_output.return_value = 'hello world'
         git = Git('/usr/bin/git', '~/.dufl')
         out = git.get_output('pull')

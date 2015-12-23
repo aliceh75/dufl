@@ -3,40 +3,22 @@ import os
 import shutil
 import yaml
 
-from .app import get_dufl_file_path
-from .utils import dufl_debug, Git, GitError
+from .app import get_dufl_file_path, create_initial_context
+from .app import SettingsBroken
+from .utils import Git, GitError
 
 
 @click.group('cli', invoke_without_command=True)
 @click.pass_context
 @click.version_option()
 @click.option('-r', '--root', default=None, help='dufl root folder. Defaults to ~/.dufl - Note that if you don\'t use the default, you\'ll need to specify it for every command.')
-@click.option('--debug/--no-debug', default=False, help='enable debug mode')
-def cli(ctx, root, debug):
+def cli(ctx, root):
     """ General group containing all commands """
-    if root is None:
-        root = os.path.expanduser('~/.dufl')
-    ctx.obj = {
-        'dufl_root': root,
-        'create_mode': 0766,
-        'home_subdir': 'home',
-        'slash_subdir': 'root',
-        'settings_file': 'settings.yaml',
-        'debug': debug,
-        'debug_context': 0
-    }
-    settings_file = os.path.join(ctx.obj['dufl_root'], ctx.obj['settings_file'])
-    if os.path.isfile(settings_file):
-        try:
-            with open(settings_file) as f:
-                settings = dict(
-                    settings.items() +
-                    yaml.load(f.read()).items()
-                )
-        except Exception:
-            click.echo("File %s appears to be corrupt. Delete or fix it, and try again." % settings_file)
-            exit(1)
-    dufl_debug('init', ctx)
+    try:
+        ctx.obj = create_initial_context(root)
+    except SettingsBroken as e:
+        click.echo('Failed to read the settings file: %s' % str(e))
+        exit(1)
 
 
 @cli.command('init')

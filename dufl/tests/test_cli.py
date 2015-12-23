@@ -5,27 +5,12 @@ import re
 import yaml
 
 from click.testing import CliRunner
-from mock import patch, call
+from contextlib import contextmanager
+from mock import call
+from tutils import patch_cli
 
 from .. import cli
 from .. import utils
-
-
-class NoInternalContext(Exception):
-    pass
-
-
-def _get_internal_context(out, n):
-    """ Return the nth internal context dump of a command invoked with --debug """
-    matches = re.search(
-        'context\\[%s\\](.+)^end\\[%s\\]' % (n, n),
-        out,
-        re.MULTILINE|re.DOTALL
-    )
-    try:
-        return yaml.load(matches.group(1).strip())
-    except AttributeError:
-        raise NoInternalContext()
 
 
 @contextlib.contextmanager
@@ -34,7 +19,7 @@ def _mock_git(remote_exists=True):
     def _git_run_side_effect(*args, **kwargs):
         if not remote_exists and args[0] == 'ls-remote':
             raise utils.GitError()
-    with patch(cli.__name__ + '.Git') as Git:
+    with patch_cli('Git') as Git:
         git = Git.return_value
         git.Git = Git
         git.run.side_effect = _git_run_side_effect
@@ -48,65 +33,14 @@ def _prepare_empty_dufl_folder(dufl_root):
     os.makedirs(os.path.join(dufl_root, 'home'))
 
 
-def test_debug_output_can_be_parsed():
+def test_provided_dufl_root_passed_to_create_initial_context():
     runner = CliRunner()
-    r = runner.invoke(
-        cli.cli, ['--debug']
-    )
-    ctx_obj = _get_internal_context(r.output, 0)
-    assert True
-
-
-def test_debug_output_is_not_empty():
-    runner = CliRunner()
-    r = runner.invoke(
-        cli.cli, ['--debug']
-    )
-    ctx_obj = _get_internal_context(r.output, 0)
-    assert len(ctx_obj.keys()) > 0
-
-
-def test_debug_mode_set_on_context():
-    runner = CliRunner()
-    r = runner.invoke(
-        cli.cli, ['--debug']
-    )
-    ctx_obj = _get_internal_context(r.output, 0)
-    assert ctx_obj['debug'] is True
-
-
-def test_provided_dufl_root_path_added_to_context():
-    runner = CliRunner()
-    r = runner.invoke(
-        cli.cli, ['-r', '/some/where', '--debug']
-    )
-    ctx_obj = _get_internal_context(r.output, 0)
-    assert ctx_obj['dufl_root'] == '/some/where'
-
-
-def test_default_dufl_root_path_is_in_current_user_home_dir():
-    runner = CliRunner()
-    with patch(cli.__name__ + '.os.path.expanduser') as e:
-        e.return_value = 'expanded-path'
+    with patch_cli('create_initial_context') as create_initial_context:
+        create_initial_context.return_value = {}
         r = runner.invoke(
-            cli.cli, ['--debug']
+            cli.cli, ['-r', '/some/where']
         )
-        assert e.call_args[0][0] == '~/.dufl'
-
-    ctx_obj = _get_internal_context(r.output, 0)
-    assert ctx_obj['dufl_root'] == 'expanded-path'
-
-
-def test_default_dufl_root_path_is_expanded():
-    runner = CliRunner()
-    with patch(cli.__name__ + '.os.path.expanduser') as e:
-        e.return_value = 'expanded-path'
-        r = runner.invoke(
-            cli.cli, ['--debug']
-        )
-
-    ctx_obj = _get_internal_context(r.output, 0)
-    assert ctx_obj['dufl_root'] == 'expanded-path'
+        create_initial_context.assert_called_with('/some/where')
 
 
 def test_dufl_init_exits_with_error_if_dufl_root_already_exists():
@@ -259,7 +193,7 @@ def test_dufl_add_invokes_get_dufl_file_path():
         with open(file_to_add, 'w') as f:
             f.write('hello world')
         with _mock_git(remote_exists=False) as git:
-            with patch(cli.__name__ + '.get_dufl_file_path') as get_dufl_file_path:
+            with patch_cli('get_dufl_file_path') as get_dufl_file_path:
                 get_dufl_file_path.return_value = os.path.join(dufl_root, 'home/four.txt')
                 r = runner.invoke(
                     cli.cli, [
