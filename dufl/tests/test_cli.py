@@ -214,6 +214,22 @@ def test_dufl_init_does_not_overwrite_settings_file_pulled_from_remote():
         assert settings == {'git': '/a/very/different/location'}
 
 
+def test_dufl_init_adds_and_commits_initial_settings_file():
+    runner = CliRunner()
+    with runner.isolated_filesystem():
+        here = os.getcwd()
+        dufl_root = os.path.join(here, '.dufl')
+        with _mock_git(remote_exists=False) as git:
+            r = runner.invoke(
+                cli.cli, [
+                    '-r', dufl_root,
+                    'init', 'https://git.example.com/example.git'
+                ]
+            )
+            assert call('add', os.path.join(dufl_root, 'settings.yaml')) in git.run.call_args_list
+            assert call('commit', '-m', 'Initial settings file.') in git.run.call_args_list
+
+
 def test_dufl_add_copies_file_to_dufl_root_subfolder():
     runner = CliRunner()
     with runner.isolated_filesystem():

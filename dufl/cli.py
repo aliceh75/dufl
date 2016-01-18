@@ -66,6 +66,9 @@ def init(ctx, repository, git):
                 the_file.write(yaml.dump({
                     'git': git,
                 }))
+            giti.run('add', os.path.join(dufl_root, ctx.obj['settings_file']))
+            giti.run('commit', '-m', 'Initial settings file.')
+
         click.echo('Done!')
     except Exception as e:
         click.echo(e)
