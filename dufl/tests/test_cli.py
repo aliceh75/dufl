@@ -14,11 +14,25 @@ from .. import utils
 
 
 @contextlib.contextmanager
-def _mock_git(remote_exists=True):
-    """ Context manager used to mock the git utility """
+def _mock_git(remote_exists=True, pull=None):
+    """ Context manager used to mock the git utility
+
+    Args:
+        remote_exists (bool): True if the remote end exists. If False,
+            the side effect will raise on ls-remote.
+        pull (dict): Dictionary of file path to file content describing
+            the files that get pulled when git pull is invoked
+    """
     def _git_run_side_effect(*args, **kwargs):
         if not remote_exists and args[0] == 'ls-remote':
             raise utils.GitError()
+        if pull is not None and args[0] == 'pull':
+            for file_name, file_content in pull.items():
+                if not os.path.exists(os.path.dirname(file_name)):
+                    os.makedirs(os.path.dirname(file_name))
+                with open(file_name, 'w') as the_file:
+                    the_file.write(file_content)
+
     with patch_cli('Git') as Git:
         git = Git.return_value
         git.Git = Git
@@ -123,7 +137,7 @@ def test_dufl_init_pulls_remote_if_present():
             git.run.assert_any_call('pull')
 
 
-def test_dufl_init_creates_skeleton_if_no_remote():
+def test_dufl_init_creates_skeleton_folders_when_then_is_no_remote_repository():
     runner = CliRunner()
     with runner.isolated_filesystem():
         here = os.getcwd()
@@ -141,7 +155,25 @@ def test_dufl_init_creates_skeleton_if_no_remote():
         assert os.path.isfile(os.path.join(dufl_root, 'settings.yaml'))
 
 
-def test_dufl_init_creates_settings_file_with_git_option():
+def test_dufl_init_creates_skeleton_folders_when_remote_does_not_include_them():
+    runner = CliRunner()
+    with runner.isolated_filesystem():
+        here = os.getcwd()
+        dufl_root = os.path.join(here, '.dufl')
+        with _mock_git() as git:
+            r = runner.invoke(
+                cli.cli, [
+                    '-r', dufl_root,
+                    'init', 'https://git.example.com/example.git'
+                ]
+            )
+            git.run.assert_any_call('pull')
+        assert os.path.isdir(os.path.join(dufl_root, 'home'))
+        assert os.path.isdir(os.path.join(dufl_root, 'root'))
+        assert os.path.isfile(os.path.join(dufl_root, 'settings.yaml'))
+
+
+def test_dufl_init_creates_settings_file_with_git_option_when_remote_does_not_include_it():
     runner = CliRunner()
     with runner.isolated_filesystem():
         here = os.getcwd()
@@ -157,6 +189,29 @@ def test_dufl_init_creates_settings_file_with_git_option():
         with open(os.path.join(dufl_root, 'settings.yaml')) as f:
             settings = yaml.load(f.read())
         assert settings == {'git': '/usr/bin/git'}
+
+
+def test_dufl_init_does_not_overwrite_settings_file_pulled_from_remote():
+    runner = CliRunner()
+    with runner.isolated_filesystem():
+        here = os.getcwd()
+        dufl_root = os.path.join(here, '.dufl')
+        remote_content = {
+            os.path.join(dufl_root, 'settings.yaml'): yaml.dump({
+                'git': '/a/very/different/location'
+            })
+        }
+        with _mock_git(pull=remote_content) as git:
+            r = runner.invoke(
+                cli.cli, [
+                    '-r', dufl_root,
+                    'init', 'https://git.example.com/example.git'
+                ]
+            )
+
+        with open(os.path.join(dufl_root, 'settings.yaml')) as f:
+            settings = yaml.load(f.read())
+        assert settings == {'git': '/a/very/different/location'}
 
 
 def test_dufl_add_copies_file_to_dufl_root_subfolder():

@@ -52,10 +52,15 @@ def init(ctx, repository, git):
         if repo_exists:
             click.echo('Pull master branch of %s' % repository)
             giti.run('pull')
-        else:
-            click.echo('Creating new structure in %s' % dufl_root)
+
+        if not os.path.exists(os.path.join(dufl_root, ctx.obj['home_subdir'])):
+            click.echo('Creating home subfolder in %s' % dufl_root)
             os.makedirs(os.path.join(dufl_root, ctx.obj['home_subdir']), ctx.obj['create_mode'])
+        if not os.path.exists(os.path.join(dufl_root, ctx.obj['slash_subdir'])):
+            click.echo('Creating absolute subfolder in %s' % dufl_root)
             os.makedirs(os.path.join(dufl_root, ctx.obj['slash_subdir']), ctx.obj['create_mode'])
+
+        if not os.path.exists(os.path.join(dufl_root, ctx.obj['settings_file'])):
             click.echo('Creating default settings file in %s' % dufl_root)
             with open(os.path.join(dufl_root, ctx.obj['settings_file']), 'w') as the_file:
                 the_file.write(yaml.dump({
