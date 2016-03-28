@@ -21,18 +21,18 @@ def get_dufl_file_path(file_path, settings):
     """
     file_path = os.path.abspath(file_path)
     home = os.path.expanduser('~')
-    home = re.sub('\\/$', '', home)
+    home = re.sub('/$', '', home)
     if file_path.startswith(home + '/'):
         return os.path.join(
             settings['dufl_root'],
-            re.sub('^\\/', '', settings['home_subdir']),
-            re.sub('^\\/', '', file_path[len(home):])
+            re.sub('^/', '', settings['home_subdir']),
+            re.sub('^/', '', file_path[len(home):])
         )
     else:
         return os.path.join(
             settings['dufl_root'],
-            re.sub('^\\/', '', settings['slash_subdir']),
-            re.sub('^\\/', '', file_path)
+            re.sub('^/', '', settings['slash_subdir']),
+            re.sub('^/', '', file_path)
         )
 
 

@@ -249,7 +249,7 @@ def test_dufl_add_copies_file_to_dufl_root_subfolder():
             )
             assert os.path.isfile(os.path.join(
                 dufl_root, 'root',
-                re.sub('^\\/', '', file_to_add)
+                re.sub('^/', '', file_to_add)
             ))
 
 
@@ -288,7 +288,7 @@ def test_dufl_add_adds_and_commits_file_to_git():
         with _mock_git(remote_exists=False) as git:
             add_call = call('add', os.path.join(
                 dufl_root, 'root',
-                re.sub('^\\/', '', file_to_add)
+                re.sub('^/', '', file_to_add)
             ))
             commit_call = call('commit', '-m', 'Update.')
             r = runner.invoke(
