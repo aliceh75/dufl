@@ -70,7 +70,7 @@ def test_dufl_init_exits_with_error_if_dufl_root_already_exists():
                     'init', 'https://git.example.com/example.git'
                 ]
             )
-    assert r.exit_code == 1
+    assert r.exit_code != 0
     assert ('Folder %s already exists, cannot initialize.' % dufl_root) in r.output
 
 

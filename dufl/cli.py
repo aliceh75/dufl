@@ -17,7 +17,10 @@ def cli(ctx, root):
     try:
         ctx.obj = create_initial_context(root)
     except SettingsBroken as e:
-        click.echo('Failed to read the settings file: %s' % str(e))
+        click.echo(
+            'Failed to read the settings file: %s' % str(e),
+            err=True
+        )
         exit(1)
 
 
@@ -26,10 +29,13 @@ def cli(ctx, root):
 @click.argument('repository')
 @click.option('--git', default='/usr/bin/git', help='git binary. This will be stored in the settings file.')
 def init(ctx, repository, git):
-    """ Initialize dufl for the current user """
+    """ Initialize the dufl root folder (must not exist) - by default ~/.dufl """
     dufl_root = ctx.obj['dufl_root']
     if os.path.exists(dufl_root):
-        click.echo('Folder %s already exists, cannot initialize.' % dufl_root)
+        click.echo(
+            'Folder %s already exists, cannot initialize.' % dufl_root,
+            err=True
+        )
         exit(1)
 
     try:
@@ -50,7 +56,7 @@ def init(ctx, repository, git):
             pass
 
         if repo_exists:
-            click.echo('Pull master branch of %s' % repository)
+            click.echo('Pulling master branch of %s' % repository)
             giti.run('pull')
 
         if not os.path.exists(os.path.join(dufl_root, ctx.obj['home_subdir'])):
@@ -71,8 +77,11 @@ def init(ctx, repository, git):
 
         click.echo('Done!')
     except Exception as e:
-        click.echo(e)
-        click.echo('Failed. To retry, you will need to clean up by deleting the folder %s' % dufl_root)
+        click.echo(e, err=True)
+        click.echo(
+            'Failed. To retry, you will need to clean up by deleting the folder %s' % dufl_root,
+            err=True
+        )
         exit(1)
 
 

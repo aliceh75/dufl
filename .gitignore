@@ -3,3 +3,4 @@ venv
 .*~
 .cache
 dufl.egg-info
+.*.swp
