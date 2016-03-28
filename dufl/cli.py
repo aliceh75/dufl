@@ -3,6 +3,7 @@ import os
 import shutil
 import yaml
 
+from . import defaults
 from .app import get_dufl_file_path, create_initial_context
 from .app import SettingsBroken
 from .utils import Git, GitError
@@ -69,9 +70,11 @@ def init(ctx, repository, git):
         if not os.path.exists(os.path.join(dufl_root, ctx.obj['settings_file'])):
             click.echo('Creating default settings file in %s' % dufl_root)
             with open(os.path.join(dufl_root, ctx.obj['settings_file']), 'w') as the_file:
-                the_file.write(yaml.dump({
-                    'git': git,
-                }))
+                the_file.write(yaml.dump(dict(
+                    defaults.settings.items() + {
+                        'git': git
+                    }.items()
+                )))
             giti.run('add', os.path.join(dufl_root, ctx.obj['settings_file']))
             giti.run('commit', '-m', 'Initial settings file.')
 
@@ -108,5 +111,6 @@ def push(ctx):
     """ Push the git repo """
     dufl_root = ctx.obj['dufl_root']
     git = Git(ctx.obj.get('git', '/usr/bin/git'), dufl_root)
-    print 'hello'
     git.run('push')
+
+

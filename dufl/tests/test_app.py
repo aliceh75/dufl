@@ -3,6 +3,7 @@ import yaml
 
 from click.testing import CliRunner
 from tutils import patch_app
+from .. import defaults
 from ..app import get_dufl_file_path, create_initial_context
 
 
@@ -77,7 +78,9 @@ def test_create_initial_context_creates_expected_settings():
         isfile.return_value = False
         expanduser.return_value = '/some/where'
         context = create_initial_context(None)
-        assert set(['git', 'dufl_root', 'create_mode', 'home_subdir', 'slash_subdir', 'settings_file']) == set(context.keys())
+        assert set(defaults.settings.keys() + [
+            'dufl_root', 'create_mode', 'home_subdir', 
+            'slash_subdir', 'settings_file']) == set(context.keys())
 
 
 def test_create_initial_context_sets_default_root_in_homedir():
@@ -108,16 +111,28 @@ def test_create_initial_context_merges_allowed_keys_from_settings_file():
     with runner.isolated_filesystem():
         here = os.getcwd()
         with open(os.path.join(here, 'settings.yaml'), 'w') as f:
-            f.write(yaml.dump({
-                'git': '$$$',
+            f.write(yaml.dump(dict(
+                [(k, ':-)') for k in defaults.settings]
+            )))
+        context = create_initial_context(here)
+        for key in defaults.settings:
+            assert context[key] == ':-)'
+
+
+def test_create_initial_context_does_not_merge_unknown_keys_from_settings_file():
+    runner = CliRunner()
+    with runner.isolated_filesystem():
+        here = os.getcwd()
+        with open(os.path.join(here, 'settings.yaml'), 'w') as f:
+            f.write(yaml.dump(dict(
+                defaults.settings.items() + {
                 'dufl_root': '$$$',
                 'create_mode': '$$$',
                 'home_subdir': '$$$',
                 'slash_subdir': '$$$',
                 'settings_file': '$$$',
                 'other_stuff': '$$$'
-            }))
+            }.items())))
         context = create_initial_context(here)
         assert 'other_stuff' not in context.keys()
-        assert context['git'] == '$$$'
-        assert '$$$' not in [v for (k,v) in context.items() if k != 'git']
+        assert '$$$' not in [v for (k,v) in context.items()]

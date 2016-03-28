@@ -3,6 +3,7 @@ import re
 import yaml
 
 from yaml.scanner import ScannerError
+from . import defaults
 
 
 def get_dufl_file_path(file_path, settings):
@@ -59,14 +60,13 @@ def create_initial_context(root):
     if root is None:
         root = os.path.expanduser('~/.dufl')
     root = os.path.abspath(root)
-    context = {
-        'git': '/usr/bin/git',
+    context = dict(defaults.settings.items() + {
         'dufl_root': root,
         'create_mode': 0766,
         'home_subdir': 'home',
         'slash_subdir': 'root',
         'settings_file': 'settings.yaml'
-    }
+    }.items())
     settings_file = os.path.join(
         context['dufl_root'], context['settings_file']
     )
@@ -78,7 +78,7 @@ def create_initial_context(root):
             raise SettingsBroken('Could not open settings file.')
         except ScannerError:
             raise SettingsBroken('Could not parse settings file.')
-        allowed_settings = ['git']
+        allowed_settings = defaults.settings.keys()
         for setting_key in settings:
             if setting_key in allowed_settings:
                 context[setting_key] = settings[setting_key]

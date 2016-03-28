@@ -10,6 +10,7 @@ from mock import call
 from tutils import patch_cli
 
 from .. import cli
+from .. import defaults
 from .. import utils
 
 
@@ -173,7 +174,7 @@ def test_dufl_init_creates_skeleton_folders_when_remote_does_not_include_them():
         assert os.path.isfile(os.path.join(dufl_root, 'settings.yaml'))
 
 
-def test_dufl_init_creates_settings_file_with_git_option_when_remote_does_not_include_it():
+def test_dufl_init_creates_default_settings_file_when_remote_does_not_include_it():
     runner = CliRunner()
     with runner.isolated_filesystem():
         here = os.getcwd()
@@ -188,7 +189,8 @@ def test_dufl_init_creates_settings_file_with_git_option_when_remote_does_not_in
 
         with open(os.path.join(dufl_root, 'settings.yaml')) as f:
             settings = yaml.load(f.read())
-        assert settings == {'git': '/usr/bin/git'}
+        for key in defaults.settings:
+            assert settings[key] == defaults.settings[key]
 
 
 def test_dufl_init_does_not_overwrite_settings_file_pulled_from_remote():
