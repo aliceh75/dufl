@@ -256,6 +256,8 @@ def test_dufl_add_copies_file_to_dufl_root_subfolder():
 
 
 def test_dufl_add_invokes_get_dufl_file_path():
+    """ FIXME: This is not a good test. It should test the file goes where it's meant to,
+        not whether the right function is invoked. """
     runner = CliRunner()
     with runner.isolated_filesystem():
         here = os.getcwd()
