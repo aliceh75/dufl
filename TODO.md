@@ -1,0 +1,7 @@
+- Change dufl folder names to 'root' and 'home'
+- Add security tests to `dufl add` and tests
+- Check that `dufl add` is tested adequately
+- Check that `dufl push` is tested adequately
+- Implement `dufl checkout` + test + sudo mode
+- Implement `dufl status`
+- Implement `dufl diff` 
