@@ -102,6 +102,17 @@ def add(ctx, file_name, message):
         if re.search(expr, source):
             click.echo('Error! This file won\'t be added because %s' % msg, err=True)
             exit(1)
+    if len(ctx.obj['suspicious_content']) > 0:
+        with open(source) as f:
+            data = f.read()
+            for expr, msg in ctx.obj['suspicious_content'].items():
+                if re.search(expr, data):
+                    click.echo(
+                        'Error! This file won\'t be added because %s' % msg,
+                        err=True
+                    )
+                    exit(1)
+    # Go ahead
     dest = get_dufl_file_path(source, ctx.obj)
     if not os.path.isdir(os.path.dirname(dest)):
         os.makedirs(os.path.dirname(dest))

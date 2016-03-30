@@ -4,7 +4,7 @@ settings = {
     'suspicious_names': {
         'id_rsa$': 'this looks like a private key'
     },
-    'suspicous_content': {
+    'suspicious_content': {
         '-BEGIN .+ PRIVATE KEY-': 'this looks like a private key'
     }
 }
