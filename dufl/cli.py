@@ -1,5 +1,6 @@
 import click
 import os
+import re
 import shutil
 import yaml
 
@@ -96,6 +97,11 @@ def add(ctx, file_name, message):
     """ Add and commit a new file """
     dufl_root = ctx.obj['dufl_root']
     source = os.path.abspath(file_name)
+    # Security checks!
+    for expr, msg in ctx.obj['suspicious_names'].items():
+        if re.search(expr, source):
+            click.echo('Error! This file won\'t be added because %s' % msg, err=True)
+            exit(1)
     dest = get_dufl_file_path(source, ctx.obj)
     if not os.path.isdir(os.path.dirname(dest)):
         os.makedirs(os.path.dirname(dest))
@@ -112,5 +118,3 @@ def push(ctx):
     dufl_root = ctx.obj['dufl_root']
     git = Git(ctx.obj.get('git', '/usr/bin/git'), dufl_root)
     git.run('push')
-
-

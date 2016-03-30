@@ -302,6 +302,36 @@ def test_dufl_add_adds_and_commits_file_to_git():
             assert add_call in git.run.call_args_list
             assert commit_call in git.run.call_args_list
 
+def test_dufl_add_does_not_add_file_whose_name_matches_security_rule():
+    runner = CliRunner()
+    with runner.isolated_filesystem():
+        here = os.getcwd()
+        dufl_root = os.path.join(here, '.dufl')
+        _prepare_empty_dufl_folder(dufl_root)
+        file_to_add = os.path.join(here, 'one', 'two', 'three.txt')
+        os.makedirs(os.path.dirname(file_to_add))
+        with open(file_to_add, 'w') as f:
+            f.write('hello world')
+        with open(os.path.join(dufl_root, 'settings.yaml'), 'w') as f:
+            f.write(yaml.dump({
+                'suspicious_names': {
+                    'three\.[^.]+$': 'no by name!'
+                },
+                'suspicious_content': {}
+            }))
+        with _mock_git(remote_exists=False) as git:
+            r = runner.invoke(
+                cli.cli, [
+                    '-r', dufl_root,
+                    'add', file_to_add
+                ]
+            )
+            assert r.exit_code != 0
+            assert 'no by name!' in r.output
+            assert not os.path.isfile(os.path.join(
+                dufl_root, 'root',
+                re.sub('^/', '', file_to_add)
+            ))
 
 def test_dufl_add_uses_provided_commit_message():
     runner = CliRunner()
