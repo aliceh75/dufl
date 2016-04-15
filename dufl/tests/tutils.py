@@ -1,6 +1,7 @@
 import os
 import pytest
 import tempfile
+import re
 import shutil
 
 from contextlib import contextmanager
@@ -90,6 +91,34 @@ def temp_folder(request):
     request.addfinalizer(finalize)
     return temp_folder
 
+
+@pytest.fixture
+def user_home(request):
+    """ Fixture to fake a current user.
+
+    An empty home folder is created. app.os.path.expanduser
+    is patched to return the path to that. The fixture value 
+    is the path to the user home folder.
+    """
+    cwd = os.getcwd()
+    temp_folder = tempfile.mkdtemp()
+    patcher = patch(app.__name__ + '.os.path.expanduser')
+    def finalize():
+        # Ensure we're not in the folder
+        os.chdir(cwd)
+        try:
+            shutil.rmtree(temp_folder)
+        except (OSError, IOError):
+            pass
+        patcher.stop()
+    def do_expand(value):
+        expanded = re.sub('^~[^/]*', temp_folder, value)
+        return expanded
+    expand_user = patcher.start()
+    expand_user.side_effect = do_expand
+    request.addfinalizer(finalize)
+    return temp_folder
+    
 
 @pytest.fixture
 def git(temp_folder):
