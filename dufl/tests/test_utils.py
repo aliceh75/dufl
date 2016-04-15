@@ -1,8 +1,12 @@
 from subprocess import CalledProcessError
 
-from tutils import patch_utils
+from tutils import patch_utils, git, temp_folder
 from ..utils import Git, GitError
 
+#
+# These tests don't require the git binary - they only
+# ensure Git interacts with the binary as expected
+#
 
 def test_git_run_invokes_provided_git_binary():
     with patch_utils('check_call') as check_call:
@@ -88,3 +92,16 @@ def test_git_get_output_returns_command_output():
         git = Git('/usr/bin/git', '~/.dufl')
         out = git.get_output('pull')
         assert out == 'hello world'
+
+
+#
+# These tests require the git binary, and ensure
+# it works as expected.
+#
+
+def test_working_branch_returns_checkedout_branch(git):
+    git.run('branch', 'somebranch')
+    git.run('checkout', 'somebranch')
+    assert git.working_branch() == 'somebranch'
+    git.run('checkout', 'master')
+    assert git.working_branch() == 'master'

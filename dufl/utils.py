@@ -1,3 +1,5 @@
+import re
+
 from subprocess import check_call, check_output, CalledProcessError
 
 
@@ -55,3 +57,20 @@ class Git(object):
         except CalledProcessError:
             raise GitError()
         return out
+
+    def working_branch(self):
+        """ Return the working branch
+
+        'working' here means most recently checked out, not the branch of HEAD.
+
+        Returns:
+            str: The working branch
+        Raises:
+            GitError
+        """
+        branches = self.get_output('branch', '--list', '--no-color')
+        for branch in branches.split("\n"):
+            current = re.search('^\* (?P<branch_name>[^\s]+)$', branch.strip())
+            if current:
+                return current.groupdict()['branch_name']
+        raise GitError()
