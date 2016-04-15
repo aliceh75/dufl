@@ -4,6 +4,7 @@ import tempfile
 import re
 import shutil
 
+from click.testing import CliRunner
 from contextlib import contextmanager
 from mock import patch
 
@@ -69,21 +70,31 @@ def patch_utils(*names):
             yield p
 
 
-@pytest.fixture
-def temp_folder(request):
-    """ Fixture to create a temporary folder, and set the cwd to it.
+def _create_temp_folder(request, chdir=False):
+    """ Create a temporary folder, and return it's path.
 
-    The path is provided as the fixture value, and the folder
-    deleted when done.
+    This will add a finalizer to the fixture to ensure
+    the folder is removed when the fixture goes out of
+    scope.
 
-    Based on click's isolated_filesystem, but works as a fixture
-    rathen than a context manager.
+    If chdir is true, set the current working directory
+    to the temporary folder (and restore previous dir
+    on clean up)
+
+    Args:
+        request: Fixture request object
+        chdir (bool): True to change the current working
+            directory to the created folder.
+    Returns:
+        str: Path to the temporary folder
     """
-    cwd = os.getcwd()
     temp_folder = tempfile.mkdtemp()
-    os.chdir(temp_folder)
+    if chdir:
+        cwd = os.getcwd()
+        os.chdir(temp_folder)
     def finalize():
-        os.chdir(cwd)
+        if chdir:
+            os.chdir(cwd)
         try:
             shutil.rmtree(temp_folder)
         except (OSError, IOError):
@@ -92,40 +103,18 @@ def temp_folder(request):
     return temp_folder
 
 
-@pytest.fixture
-def user_home(request):
-    """ Fixture to fake a current user.
+def _create_git_repo(request):
+    """ Create a git repository, and return a Git object
 
-    An empty home folder is created. app.os.path.expanduser
-    is patched to return the path to that. The fixture value 
-    is the path to the user home folder.
+    This will create a new git repository with a single
+    file 'readme.txt' commited to the master branch.
+
+    Args:
+        request: Fixture request object
+    Returns:
+        Git: Git object
     """
-    cwd = os.getcwd()
-    temp_folder = tempfile.mkdtemp()
-    patcher = patch(app.__name__ + '.os.path.expanduser')
-    def finalize():
-        # Ensure we're not in the folder
-        os.chdir(cwd)
-        try:
-            shutil.rmtree(temp_folder)
-        except (OSError, IOError):
-            pass
-        patcher.stop()
-    def do_expand(value):
-        expanded = re.sub('^~[^/]*', temp_folder, value)
-        return expanded
-    expand_user = patcher.start()
-    expand_user.side_effect = do_expand
-    request.addfinalizer(finalize)
-    return temp_folder
-    
-
-@pytest.fixture
-def git(temp_folder):
-    """ Fixture to provide an initialized git repository.
-
-    This requires the Git binary to be in the path
-    """
+    temp_folder = _create_temp_folder(request, chdir=False)
     git = utils.Git('/usr/bin/git', temp_folder)
     git.run('init')
 
@@ -138,3 +127,77 @@ def git(temp_folder):
     git.run('commit', '-m', 'readme')
 
     return git
+
+
+@pytest.fixture
+def cli_runner():
+    """ Fixture to return click's CliRunner object """
+    return CliRunner()
+
+
+@pytest.fixture
+def temp_folder(request):
+    """ Fixture to create a temporary folder, and set the cwd to it.
+
+    The path is provided as the fixture value, and the folder
+    deleted when done.
+
+    Based on click's isolated_filesystem, but works as a fixture
+    rathen than a context manager.
+    """
+    return _create_temp_folder(request, chdir=True)
+
+
+@pytest.fixture
+def user_home(request):
+    """ Fixture to fake a current user.
+
+    An empty home folder is created. app.os.path.expanduser
+    is patched to return the path to that. The fixture value 
+    is the path to the user home folder.
+    """
+    temp_folder = _create_temp_folder(request, chdir=False)
+
+    patcher = patch(app.__name__ + '.os.path.expanduser')
+    def finalize():
+        patcher.stop()
+    request.addfinalizer(finalize)
+
+    def do_expand(value):
+        expanded = re.sub('^~[^/]*', temp_folder, value)
+        return expanded
+    expand_user = patcher.start()
+    expand_user.side_effect = do_expand
+    return temp_folder
+    
+
+@pytest.fixture
+def git(request):
+    """ Fixture to provide an initialized git repository.
+
+    This requires the Git binary to be in the path
+    """
+    return _create_git_repo(request)
+
+
+@pytest.fixture
+def remote_git_path(request):
+    """ Fixture to provide a bare git repo to use as remote
+
+    The fixture value is the path to the bare repo.
+
+    Args:
+        request: The fixture request
+    Returns:
+        str: The path to the bare repo
+    """
+    temp_folder = _create_temp_folder(request, chdir=False)
+    git = utils.Git('/usr/bin/git', temp_folder)
+    git.run('init', '--bare')
+
+    # Ensure our bare repo has a master branch.
+    git_2 = _create_git_repo(request)
+    git_2.run('remote', 'add', 'origin', temp_folder)
+    git_2.run('push', 'origin', 'master')
+
+    return temp_folder
