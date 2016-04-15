@@ -1,3 +1,8 @@
+import os
+import pytest
+import tempfile
+import shutil
+
 from contextlib import contextmanager
 from mock import patch
 
@@ -61,3 +66,46 @@ def patch_utils(*names):
                 yield list([p]) + patches
         else:
             yield p
+
+
+@pytest.fixture
+def temp_folder(request):
+    """ Fixture to create a temporary folder, and set the cwd to it.
+
+    The path is provided as the fixture value, and the folder
+    deleted when done.
+
+    Based on click's isolated_filesystem, but works as a fixture
+    rathen than a context manager.
+    """
+    cwd = os.getcwd()
+    temp_folder = tempfile.mkdtemp()
+    os.chdir(temp_folder)
+    def finalize():
+        os.chdir(cwd)
+        try:
+            shutil.rmtree(temp_folder)
+        except (OSError, IOError):
+            pass
+    request.addfinalizer(finalize)
+    return temp_folder
+
+
+@pytest.fixture
+def git(temp_folder):
+    """ Fixture to provide an initialized git repository.
+
+    This requires the Git binary to be in the path
+    """
+    git = utils.Git('/usr/bin/git', temp_folder)
+    git.run('init')
+
+    # The repository doesn't have master branch until we commit
+    # something, so create a file.
+    readme = os.path.join(temp_folder, 'readme.txt')
+    with open(readme, 'w') as f:
+            f.write('hello world')
+    git.run('add', readme)
+    git.run('commit', '-m', 'readme')
+
+    return git
