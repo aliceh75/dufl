@@ -7,402 +7,285 @@ import yaml
 from click.testing import CliRunner
 from contextlib import contextmanager
 from mock import call
-from tutils import patch_cli
+from tutils import (
+    patch_cli, temp_folder, temp_folder_2, cli_run, remote_git_path,
+    add_content_to_remote_git_repo, user_home
+)
 
 from .. import cli
 from .. import defaults
 from .. import utils
 
 
-@contextlib.contextmanager
-def _mock_git(remote_exists=True, pull=None):
-    """ Context manager used to mock the git utility
-
-    Args:
-        remote_exists (bool): True if the remote end exists. If False,
-            the side effect will raise on ls-remote.
-        pull (dict): Dictionary of file path to file content describing
-            the files that get pulled when git pull is invoked
-    """
-    def _git_run_side_effect(*args, **kwargs):
-        if not remote_exists and args[0] == 'ls-remote':
-            raise utils.GitError()
-        if pull is not None and args[0] == 'pull':
-            for file_name, file_content in pull.items():
-                if not os.path.exists(os.path.dirname(file_name)):
-                    os.makedirs(os.path.dirname(file_name))
-                with open(file_name, 'w') as the_file:
-                    the_file.write(file_content)
-
-    with patch_cli('Git') as Git:
-        git = Git.return_value
-        git.Git = Git
-        git.run.side_effect = _git_run_side_effect
-        yield git
-
-
-def _prepare_empty_dufl_folder(dufl_root):
-    """ Prepares a (mock) empty dufl folder at the given path """
+def test_dufl_init_exits_with_error_if_dufl_root_already_exists(cli_run, temp_folder):
+    dufl_root = os.path.join(temp_folder, '.dufl')
     os.makedirs(dufl_root)
-    os.makedirs(os.path.join(dufl_root, 'root'))
-    os.makedirs(os.path.join(dufl_root, 'home'))
 
+    r = cli_run('-r', dufl_root, 'init')
 
-def test_provided_dufl_root_passed_to_create_initial_context():
-    runner = CliRunner()
-    with patch_cli('create_initial_context') as create_initial_context:
-        create_initial_context.return_value = {}
-        r = runner.invoke(
-            cli.cli, ['-r', '/some/where']
-        )
-        create_initial_context.assert_called_with('/some/where')
-
-
-def test_dufl_init_exits_with_error_if_dufl_root_already_exists():
-    runner = CliRunner()
-    with runner.isolated_filesystem():
-        here = os.getcwd()
-        dufl_root = os.path.join(here, '.dufl')
-        os.makedirs(dufl_root)
-        with _mock_git() as git:
-            r = runner.invoke(
-                cli.cli, [
-                    '-r', dufl_root,
-                    'init', 'https://git.example.com/example.git'
-                ]
-            )
     assert r.exit_code != 0
     assert ('Folder %s already exists, cannot initialize.' % dufl_root) in r.output
 
 
-def test_dufl_init_creates_dufl_root():
-    runner = CliRunner()
-    with runner.isolated_filesystem():
-        here = os.getcwd()
-        dufl_root = os.path.join(here, '.dufl')
-        with _mock_git() as git:
-            r = runner.invoke(
-                cli.cli, [
-                    '-r', dufl_root,
-                    'init', 'https://git.example.com/example.git'
-                ]
-            )
-        assert os.path.isdir(dufl_root)
+def test_dufl_init_creates_dufl_root(cli_run, temp_folder):
+    dufl_root = os.path.join(temp_folder, '.dufl')
+    r = cli_run('-r', dufl_root, 'init')
+    assert os.path.isdir(dufl_root)
 
 
-def test_dufl_init_initializes_git_repo_in_new_dufl_root():
-    runner = CliRunner()
-    with runner.isolated_filesystem():
-        here = os.getcwd()
-        dufl_root = os.path.join(here, '.dufl')
-        with _mock_git() as git:
-            r = runner.invoke(
-                cli.cli, [
-                    '-r', dufl_root,
-                    'init', 'https://git.example.com/example.git'
-                ]
-            )
-            git.run.assert_any_call('init')
-            git.Git.assert_any_call('/usr/bin/git', dufl_root)
+def test_dufl_init_warns_user_if_no_remote_is_specified(cli_run, temp_folder):
+    dufl_root = os.path.join(temp_folder, '.dufl')
+    r = cli_run('-r', dufl_root, 'init')
+    assert 'No remote specified' in r.output
 
 
-def test_dufl_init_sets_git_repo_remote():
-    runner = CliRunner()
-    with runner.isolated_filesystem():
-        here = os.getcwd()
-        dufl_root = os.path.join(here, '.dufl')
-        with _mock_git() as git:
-            r = runner.invoke(
-                cli.cli, [
-                    '-r', dufl_root,
-                    'init', 'https://git.example.com/example.git'
-                ]
-            )
-            git.run.assert_any_call('remote', 'add', 'origin', 'https://git.example.com/example.git')
+def test_dufl_init_initializes_git_repo_in_new_dufl_root(cli_run, temp_folder):
+    dufl_root = os.path.join(temp_folder, '.dufl')
+
+    r = cli_run('-r', dufl_root, 'init')
+
+    git = utils.Git('/usr/bin/git', dufl_root)
+    try:
+        git.run('status')
+    except utils.GitError:
+        assert False
 
 
-def test_dufl_init_pulls_remote_if_present():
-    runner = CliRunner()
-    with runner.isolated_filesystem():
-        here = os.getcwd()
-        dufl_root = os.path.join(here, '.dufl')
-        with _mock_git() as git:
-            r = runner.invoke(
-                cli.cli, [
-                    '-r', dufl_root,
-                    'init', 'https://git.example.com/example.git'
-                ]
-            )
-            git.run.assert_any_call('init')
-            git.run.assert_any_call('ls-remote', 'https://git.example.com/example.git')
-            git.run.assert_any_call('pull')
+def test_dufl_init_sets_git_repo_remote(cli_run, temp_folder, remote_git_path):
+    dufl_root = os.path.join(temp_folder, '.dufl')
+
+    r = cli_run('-r', dufl_root, 'init', remote_git_path)
+
+    git = utils.Git('/usr/bin/git', dufl_root)
+    remotes = git.get_output('remote', '-v')
+    assert remote_git_path in remotes
 
 
-def test_dufl_init_creates_skeleton_folders_when_then_is_no_remote_repository():
-    runner = CliRunner()
-    with runner.isolated_filesystem():
-        here = os.getcwd()
-        dufl_root = os.path.join(here, '.dufl')
-        with _mock_git(remote_exists=False) as git:
-            r = runner.invoke(
-                cli.cli, [
-                    '-r', dufl_root,
-                    'init', 'https://git.example.com/example.git'
-                ]
-            )
-            assert call('pull') not in git.run.call_args_list
-        assert os.path.isdir(os.path.join(dufl_root, 'home'))
-        assert os.path.isdir(os.path.join(dufl_root, 'root'))
-        assert os.path.isfile(os.path.join(dufl_root, 'settings.yaml'))
+def test_dufl_init_pulls_remote_if_present(cli_run, temp_folder, remote_git_path):
+    dufl_root = os.path.join(temp_folder, '.dufl')
+    add_content_to_remote_git_repo(remote_git_path, {
+        'remote_file.txt': 'hello'
+    })
+
+    r = cli_run('-r', dufl_root, 'init', remote_git_path)
+
+    assert os.path.isfile(os.path.join(dufl_root, 'remote_file.txt'))
 
 
-def test_dufl_init_creates_skeleton_folders_when_remote_does_not_include_them():
-    runner = CliRunner()
-    with runner.isolated_filesystem():
-        here = os.getcwd()
-        dufl_root = os.path.join(here, '.dufl')
-        with _mock_git() as git:
-            r = runner.invoke(
-                cli.cli, [
-                    '-r', dufl_root,
-                    'init', 'https://git.example.com/example.git'
-                ]
-            )
-            git.run.assert_any_call('pull')
-        assert os.path.isdir(os.path.join(dufl_root, 'home'))
-        assert os.path.isdir(os.path.join(dufl_root, 'root'))
-        assert os.path.isfile(os.path.join(dufl_root, 'settings.yaml'))
+def test_dufl_init_creates_skeleton_folders_when_then_is_no_remote_repository(cli_run, temp_folder):
+    dufl_root = os.path.join(temp_folder, '.dufl')
+    r = cli_run('-r', dufl_root, 'init')
+    assert os.path.isdir(os.path.join(dufl_root, 'home'))
+    assert os.path.isdir(os.path.join(dufl_root, 'root'))
+    assert os.path.isfile(os.path.join(dufl_root, 'settings.yaml'))
 
 
-def test_dufl_init_creates_default_settings_file_when_remote_does_not_include_it():
-    runner = CliRunner()
-    with runner.isolated_filesystem():
-        here = os.getcwd()
-        dufl_root = os.path.join(here, '.dufl')
-        with _mock_git(remote_exists=False) as git:
-            r = runner.invoke(
-                cli.cli, [
-                    '-r', dufl_root,
-                    'init', 'https://git.example.com/example.git'
-                ]
-            )
+def test_dufl_init_creates_skeleton_folders_when_remote_does_not_include_them(cli_run, temp_folder, remote_git_path):
+    dufl_root = os.path.join(temp_folder, '.dufl')
+    add_content_to_remote_git_repo(remote_git_path, {
+        'remote_file.txt': 'hello'
+    })
 
-        with open(os.path.join(dufl_root, 'settings.yaml')) as f:
-            settings = yaml.load(f.read())
-        for key in defaults.settings:
-            assert settings[key] == defaults.settings[key]
+    r = cli_run('-r', dufl_root, 'init', remote_git_path)
+
+    # Check we pulled
+    assert os.path.isfile(os.path.join(dufl_root, 'remote_file.txt'))
+    # And still created the skeletons
+    assert os.path.isdir(os.path.join(dufl_root, 'home'))
+    assert os.path.isdir(os.path.join(dufl_root, 'root'))
+    assert os.path.isfile(os.path.join(dufl_root, 'settings.yaml'))
 
 
-def test_dufl_init_does_not_overwrite_settings_file_pulled_from_remote():
-    runner = CliRunner()
-    with runner.isolated_filesystem():
-        here = os.getcwd()
-        dufl_root = os.path.join(here, '.dufl')
-        remote_content = {
-            os.path.join(dufl_root, 'settings.yaml'): yaml.dump({
-                'git': '/a/very/different/location'
-            })
-        }
-        with _mock_git(pull=remote_content) as git:
-            r = runner.invoke(
-                cli.cli, [
-                    '-r', dufl_root,
-                    'init', 'https://git.example.com/example.git'
-                ]
-            )
-
-        with open(os.path.join(dufl_root, 'settings.yaml')) as f:
-            settings = yaml.load(f.read())
-        assert settings == {'git': '/a/very/different/location'}
+def test_dufl_init_creates_default_settings_file_when_remote_does_not_include_it(cli_run, temp_folder, remote_git_path):
+    dufl_root = os.path.join(temp_folder, '.dufl')
+    add_content_to_remote_git_repo(remote_git_path, {
+        'remote_file.txt': 'hello'
+    })
 
 
-def test_dufl_init_adds_and_commits_initial_settings_file():
-    runner = CliRunner()
-    with runner.isolated_filesystem():
-        here = os.getcwd()
-        dufl_root = os.path.join(here, '.dufl')
-        with _mock_git(remote_exists=False) as git:
-            r = runner.invoke(
-                cli.cli, [
-                    '-r', dufl_root,
-                    'init', 'https://git.example.com/example.git'
-                ]
-            )
-            assert call('add', os.path.join(dufl_root, 'settings.yaml')) in git.run.call_args_list
-            assert call('commit', '-m', 'Initial settings file.') in git.run.call_args_list
+    r = cli_run('-r', dufl_root, 'init', remote_git_path)
+
+    # Check we pulled
+    assert os.path.isfile(os.path.join(dufl_root, 'remote_file.txt'))
+    # Check we created the default settings.yaml
+    with open(os.path.join(dufl_root, 'settings.yaml')) as f:
+        settings = yaml.load(f.read())
+    for key in defaults.settings:
+        assert settings[key] == defaults.settings[key]
 
 
-def test_dufl_add_copies_file_to_dufl_root_subfolder():
-    runner = CliRunner()
-    with runner.isolated_filesystem():
-        here = os.getcwd()
-        dufl_root = os.path.join(here, '.dufl')
-        _prepare_empty_dufl_folder(dufl_root)
-        file_to_add = os.path.join(here, 'one', 'two', 'three.txt')
-        os.makedirs(os.path.dirname(file_to_add))
-        with open(file_to_add, 'w') as f:
-            f.write('hello world')
-        with _mock_git(remote_exists=False) as git:
-            r = runner.invoke(
-                cli.cli, [
-                    '-r', dufl_root,
-                    'add', file_to_add
-                ]
-            )
-            assert os.path.isfile(os.path.join(
-                dufl_root, 'root',
-                re.sub('^/', '', file_to_add)
-            ))
+def test_dufl_init_does_not_overwrite_settings_file_pulled_from_remote(cli_run, temp_folder, remote_git_path):
+    dufl_root = os.path.join(temp_folder, '.dufl')
+    add_content_to_remote_git_repo(remote_git_path, {
+        'settings.yaml': yaml.dump({
+            'git': '/a/very/different/location'
+        })
+    })
+
+    r = cli_run('-r', dufl_root, 'init', remote_git_path)
+
+    with open(os.path.join(dufl_root, 'settings.yaml')) as f:
+        settings = yaml.load(f.read())
+    assert settings == {'git': '/a/very/different/location'}
 
 
-def test_dufl_add_invokes_get_dufl_file_path():
-    """ FIXME: This is not a good test. It should test the file goes where it's meant to,
-        not whether the right function is invoked. """
-    runner = CliRunner()
-    with runner.isolated_filesystem():
-        here = os.getcwd()
-        dufl_root = os.path.join(here, '.dufl')
-        _prepare_empty_dufl_folder(dufl_root)
-        file_to_add = os.path.join(here, 'one', 'two', 'three.txt')
-        os.makedirs(os.path.dirname(file_to_add))
-        with open(file_to_add, 'w') as f:
-            f.write('hello world')
-        with _mock_git(remote_exists=False) as git:
-            with patch_cli('get_dufl_file_path') as get_dufl_file_path:
-                get_dufl_file_path.return_value = os.path.join(dufl_root, 'home/four.txt')
-                r = runner.invoke(
-                    cli.cli, [
-                        '-r', dufl_root,
-                        'add', file_to_add
-                    ]
-                )
-            assert os.path.isfile(os.path.join(dufl_root, 'home', 'four.txt'))
+def test_dufl_init_adds_and_commits_initial_settings_file(cli_run, temp_folder):
+    dufl_root = os.path.join(temp_folder, '.dufl')
+    cli_run('-r', dufl_root, 'init')
+
+    git = utils.Git('/usr/bin/git', dufl_root)
+    files = git.get_output('ls-files')
+    assert 'settings.yaml' in files
 
 
-def test_dufl_add_adds_and_commits_file_to_git():
-    runner = CliRunner()
-    with runner.isolated_filesystem():
-        here = os.getcwd()
-        dufl_root = os.path.join(here, '.dufl')
-        _prepare_empty_dufl_folder(dufl_root)
-        file_to_add = os.path.join(here, 'one', 'two', 'three.txt')
-        os.makedirs(os.path.dirname(file_to_add))
-        with open(os.path.join(here, file_to_add), 'w') as f:
-            f.write('hello world')
-        with _mock_git(remote_exists=False) as git:
-            add_call = call('add', os.path.join(
-                dufl_root, 'root',
-                re.sub('^/', '', file_to_add)
-            ))
-            commit_call = call('commit', '-m', 'Update.')
-            r = runner.invoke(
-                cli.cli, [
-                    '-r', dufl_root,
-                    'add', file_to_add
-                ]
-            )
-            assert add_call in git.run.call_args_list
-            assert commit_call in git.run.call_args_list
+def test_dufl_add_copies_file_not_in_home_to_dufl_root_subfolder(cli_run, temp_folder, temp_folder_2):
+    dufl_root = os.path.join(temp_folder, '.dufl')
+    cli_run('-r', dufl_root, 'init')
 
-def test_dufl_add_does_not_add_file_whose_name_matches_security_rule():
-    runner = CliRunner()
-    with runner.isolated_filesystem():
-        here = os.getcwd()
-        dufl_root = os.path.join(here, '.dufl')
-        _prepare_empty_dufl_folder(dufl_root)
-        file_to_add = os.path.join(here, 'one', 'two', 'three.txt')
-        os.makedirs(os.path.dirname(file_to_add))
-        with open(file_to_add, 'w') as f:
-            f.write('hello world')
-        with open(os.path.join(dufl_root, 'settings.yaml'), 'w') as f:
-            f.write(yaml.dump({
-                'suspicious_names': {
-                    'three\.[^.]+$': 'no by name!'
-                },
-                'suspicious_content': {}
-            }))
-        with _mock_git(remote_exists=False) as git:
-            r = runner.invoke(
-                cli.cli, [
-                    '-r', dufl_root,
-                    'add', file_to_add
-                ]
-            )
-            assert r.exit_code != 0
-            assert 'no by name!' in r.output
-            assert not os.path.isfile(os.path.join(
-                dufl_root, 'root',
-                re.sub('^/', '', file_to_add)
-            ))
+    file_to_add = os.path.join(temp_folder_2, 'the', 'path', 'file.txt')
+    os.makedirs(os.path.dirname(file_to_add))
+    with open(file_to_add, 'w') as f:
+        f.write('hello')
 
-def test_dufl_add_does_not_add_file_whose_content_matches_security_rule():
-    runner = CliRunner()
-    with runner.isolated_filesystem():
-        here = os.getcwd()
-        dufl_root = os.path.join(here, '.dufl')
-        _prepare_empty_dufl_folder(dufl_root)
-        file_to_add = os.path.join(here, 'one', 'two', 'three.txt')
-        os.makedirs(os.path.dirname(file_to_add))
-        with open(file_to_add, 'w') as f:
-            f.write("hello\n here is a PRIVATE KEY ;)\n!")
-        with open(os.path.join(dufl_root, 'settings.yaml'), 'w') as f:
-            f.write(yaml.dump({
-                'suspicious_names': {},
-                'suspicious_content': {
-                    'PRIVATE KEY': 'no by content!'
-                }
-            }))
-        with _mock_git(remote_exists=False) as git:
-            r = runner.invoke(
-                cli.cli, [
-                    '-r', dufl_root,
-                    'add', file_to_add
-                ]
-            )
-            assert r.exit_code != 0
-            assert 'no by content!' in r.output
-            assert not os.path.isfile(os.path.join(
-                dufl_root, 'root',
-                re.sub('^/', '', file_to_add)
-            ))
+    cli_run('-r', dufl_root, 'add', file_to_add)
 
-def test_dufl_add_uses_provided_commit_message():
-    runner = CliRunner()
-    with runner.isolated_filesystem():
-        here = os.getcwd()
-        dufl_root = os.path.join(here, '.dufl')
-        _prepare_empty_dufl_folder(dufl_root)
-        file_to_add = os.path.join(here, 'one', 'two', 'three.txt')
-        os.makedirs(os.path.dirname(file_to_add))
-        with open(os.path.join(here, file_to_add), 'w') as f:
-            f.write('hello world')
-        with _mock_git(remote_exists=False) as git:
-            commit_call = call('commit', '-m', 'Good job!')
-            r = runner.invoke(
-                cli.cli, [
-                    '-r', dufl_root,
-                    'add', file_to_add,
-                    '-m', 'Good job!'
-                ]
-            )
-            assert commit_call in git.run.call_args_list
+    assert os.path.isfile(os.path.join(
+        dufl_root, 'root',
+        re.sub('^/', '', file_to_add)
+    ))
 
-def test_dufl_push_pushes_to_git():
-    runner = CliRunner()
-    with runner.isolated_filesystem():
-        here = os.getcwd()
-        dufl_root = os.path.join(here, '.dufl')
-        _prepare_empty_dufl_folder(dufl_root)
-        file_to_add = os.path.join(here, 'one', 'two', 'three.txt')
-        os.makedirs(os.path.dirname(file_to_add))
-        with open(os.path.join(here, file_to_add), 'w') as f:
-            f.write('hello world')
-        with _mock_git() as git:
-            push_call = call('push')
-            r = runner.invoke(
-                cli.cli, [
-                    '-r', dufl_root,
-                    'push'
-                ]
-            )
-            assert push_call in git.run.call_args_list
+
+def test_dufl_add_copies_file_in_home_to_dufl_home_subfolder(cli_run, temp_folder, user_home):
+    dufl_root = os.path.join(temp_folder, '.dufl')
+    cli_run('-r', dufl_root, 'init')
+
+    file_to_add = os.path.join(user_home, 'the', 'path', 'file.txt')
+    os.makedirs(os.path.dirname(file_to_add))
+    with open(file_to_add, 'w') as f:
+        f.write('hello')
+
+    cli_run('-r', dufl_root, 'add', file_to_add)
+
+    assert os.path.isfile(os.path.join(
+        dufl_root, 'home', 'the', 'path', 'file.txt'
+    ))
+
+
+def test_dufl_add_adds_and_commits_file_to_git(cli_run, temp_folder, temp_folder_2):
+    dufl_root = os.path.join(temp_folder, '.dufl')
+    cli_run('-r', dufl_root, 'init')
+
+    file_to_add = os.path.join(temp_folder_2, 'the', 'path', 'file.txt')
+    os.makedirs(os.path.dirname(file_to_add))
+    with open(file_to_add, 'w') as f:
+        f.write('hello')
+
+    cli_run('-r', dufl_root, 'add', file_to_add)
+
+    git = utils.Git('/usr/bin/git', dufl_root)
+    files = git.get_output('ls-files')
+    assert 'the/path/file.txt' in files
+
+
+#def test_dufl_add_does_not_add_file_whose_name_matches_security_rule():
+#    runner = CliRunner()
+#    with runner.isolated_filesystem():
+#        here = os.getcwd()
+#        dufl_root = os.path.join(here, '.dufl')
+#        _prepare_empty_dufl_folder(dufl_root)
+#        file_to_add = os.path.join(here, 'one', 'two', 'three.txt')
+#        os.makedirs(os.path.dirname(file_to_add))
+#        with open(file_to_add, 'w') as f:
+#            f.write('hello world')
+#        with open(os.path.join(dufl_root, 'settings.yaml'), 'w') as f:
+#            f.write(yaml.dump({
+#                'suspicious_names': {
+#                    'three\.[^.]+$': 'no by name!'
+#                },
+#                'suspicious_content': {}
+#            }))
+#        with _mock_git(remote_exists=False) as git:
+#            r = runner.invoke(
+#                cli.cli, [
+#                    '-r', dufl_root,
+#                    'add', file_to_add
+#                ]
+#            )
+#            assert r.exit_code != 0
+#            assert 'no by name!' in r.output
+#            assert not os.path.isfile(os.path.join(
+#                dufl_root, 'root',
+#                re.sub('^/', '', file_to_add)
+#            ))
+#
+#def test_dufl_add_does_not_add_file_whose_content_matches_security_rule():
+#    runner = CliRunner()
+#    with runner.isolated_filesystem():
+#        here = os.getcwd()
+#        dufl_root = os.path.join(here, '.dufl')
+#        _prepare_empty_dufl_folder(dufl_root)
+#        file_to_add = os.path.join(here, 'one', 'two', 'three.txt')
+#        os.makedirs(os.path.dirname(file_to_add))
+#        with open(file_to_add, 'w') as f:
+#            f.write("hello\n here is a PRIVATE KEY ;)\n!")
+#        with open(os.path.join(dufl_root, 'settings.yaml'), 'w') as f:
+#            f.write(yaml.dump({
+#                'suspicious_names': {},
+#                'suspicious_content': {
+#                    'PRIVATE KEY': 'no by content!'
+#                }
+#            }))
+#        with _mock_git(remote_exists=False) as git:
+#            r = runner.invoke(
+#                cli.cli, [
+#                    '-r', dufl_root,
+#                    'add', file_to_add
+#                ]
+#            )
+#            assert r.exit_code != 0
+#            assert 'no by content!' in r.output
+#            assert not os.path.isfile(os.path.join(
+#                dufl_root, 'root',
+#                re.sub('^/', '', file_to_add)
+#            ))
+#
+#def test_dufl_add_uses_provided_commit_message():
+#    runner = CliRunner()
+#    with runner.isolated_filesystem():
+#        here = os.getcwd()
+#        dufl_root = os.path.join(here, '.dufl')
+#        _prepare_empty_dufl_folder(dufl_root)
+#        file_to_add = os.path.join(here, 'one', 'two', 'three.txt')
+#        os.makedirs(os.path.dirname(file_to_add))
+#        with open(os.path.join(here, file_to_add), 'w') as f:
+#            f.write('hello world')
+#        with _mock_git(remote_exists=False) as git:
+#            commit_call = call('commit', '-m', 'Good job!')
+#            r = runner.invoke(
+#                cli.cli, [
+#                    '-r', dufl_root,
+#                    'add', file_to_add,
+#                    '-m', 'Good job!'
+#                ]
+#            )
+#            assert commit_call in git.run.call_args_list
+#
+#def test_dufl_push_pushes_to_git():
+#    runner = CliRunner()
+#    with runner.isolated_filesystem():
+#        here = os.getcwd()
+#        dufl_root = os.path.join(here, '.dufl')
+#        _prepare_empty_dufl_folder(dufl_root)
+#        file_to_add = os.path.join(here, 'one', 'two', 'three.txt')
+#        os.makedirs(os.path.dirname(file_to_add))
+#        with open(os.path.join(here, file_to_add), 'w') as f:
+#            f.write('hello world')
+#        with _mock_git() as git:
+#            push_call = call('push')
+#            r = runner.invoke(
+#                cli.cli, [
+#                    '-r', dufl_root,
+#                    'push'
+#                ]
+#            )
+#            assert push_call in git.run.call_args_list

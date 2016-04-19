@@ -28,7 +28,7 @@ def cli(ctx, root):
 
 @cli.command('init')
 @click.pass_context
-@click.argument('repository')
+@click.argument('repository', default='')
 @click.option('--git', default='/usr/bin/git', help='git binary. This will be stored in the settings file.')
 def init(ctx, repository, git):
     """ Initialize the dufl root folder (must not exist) - by default ~/.dufl """
@@ -47,19 +47,22 @@ def init(ctx, repository, git):
         click.echo('Initializing git repository...')
         giti = Git(git, dufl_root)
         giti.run('init')
-        giti.run('remote', 'add', 'origin', repository)
+        if repository != '':
+            giti.run('remote', 'add', 'origin', repository)
 
-        click.echo('Looking for remote repository...')
-        repo_exists = False
-        try:
-            giti.run('ls-remote', repository)
-            repo_exists = True
-        except GitError:
-            pass
+            click.echo('Looking for remote repository...')
+            repo_exists = False
+            try:
+                giti.run('ls-remote', repository)
+                repo_exists = True
+            except GitError:
+                pass
 
-        if repo_exists:
-            click.echo('Pulling master branch of %s' % repository)
-            giti.run('pull')
+            if repo_exists:
+                click.echo('Pulling master branch of %s' % repository)
+                giti.run('pull', 'origin', 'master')
+        else:
+            click.echo('No remote specified. You will need to add it manually when you have one.')
 
         if not os.path.exists(os.path.join(dufl_root, ctx.obj['home_subdir'])):
             click.echo('Creating home subfolder in %s' % dufl_root)
