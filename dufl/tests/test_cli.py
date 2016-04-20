@@ -8,8 +8,8 @@ from click.testing import CliRunner
 from contextlib import contextmanager
 from mock import call
 from tutils import (
-    patch_cli, temp_folder, temp_folder_2, cli_run, remote_git_path,
-    add_content_to_remote_git_repo, user_home
+    patch_cli, temp_folder, cli_run, remote_git_path,
+    create_files_in_folder, add_content_to_remote_git_repo, user_home
 )
 
 from .. import cli
@@ -138,20 +138,19 @@ def test_dufl_init_adds_and_commits_initial_settings_file(cli_run, temp_folder):
     assert 'settings.yaml' in files
 
 
-def test_dufl_add_copies_file_not_in_home_to_dufl_root_subfolder(cli_run, temp_folder, temp_folder_2):
+def test_dufl_add_copies_file_not_in_home_to_dufl_root_subfolder(cli_run, temp_folder):
     dufl_root = os.path.join(temp_folder, '.dufl')
     cli_run('-r', dufl_root, 'init')
 
-    file_to_add = os.path.join(temp_folder_2, 'the', 'path', 'file.txt')
-    os.makedirs(os.path.dirname(file_to_add))
-    with open(file_to_add, 'w') as f:
-        f.write('hello')
+    file_names = create_files_in_folder(temp_folder, {
+        'the/path/file.txt': 'hello'
+    })
 
-    cli_run('-r', dufl_root, 'add', file_to_add)
+    cli_run('-r', dufl_root, 'add', file_names['the/path/file.txt'])
 
     assert os.path.isfile(os.path.join(
         dufl_root, 'root',
-        re.sub('^/', '', file_to_add)
+        re.sub('^/', '', file_names['the/path/file.txt'])
     ))
 
 
@@ -159,133 +158,124 @@ def test_dufl_add_copies_file_in_home_to_dufl_home_subfolder(cli_run, temp_folde
     dufl_root = os.path.join(temp_folder, '.dufl')
     cli_run('-r', dufl_root, 'init')
 
-    file_to_add = os.path.join(user_home, 'the', 'path', 'file.txt')
-    os.makedirs(os.path.dirname(file_to_add))
-    with open(file_to_add, 'w') as f:
-        f.write('hello')
+    file_names = create_files_in_folder(user_home, {
+        'the/path/file.txt': 'hello'
+    })
 
-    cli_run('-r', dufl_root, 'add', file_to_add)
+    cli_run('-r', dufl_root, 'add', file_names['the/path/file.txt'])
 
     assert os.path.isfile(os.path.join(
-        dufl_root, 'home', 'the', 'path', 'file.txt'
+        dufl_root, 'home', 'the/path/file.txt'
     ))
 
 
-def test_dufl_add_adds_and_commits_file_to_git(cli_run, temp_folder, temp_folder_2):
+def test_dufl_add_adds_and_commits_file_to_git(cli_run, temp_folder):
     dufl_root = os.path.join(temp_folder, '.dufl')
     cli_run('-r', dufl_root, 'init')
 
-    file_to_add = os.path.join(temp_folder_2, 'the', 'path', 'file.txt')
-    os.makedirs(os.path.dirname(file_to_add))
-    with open(file_to_add, 'w') as f:
-        f.write('hello')
+    file_names = create_files_in_folder(temp_folder, {
+        'the/path/file.txt': 'hello'
+    })
 
-    cli_run('-r', dufl_root, 'add', file_to_add)
+    cli_run('-r', dufl_root, 'add', file_names['the/path/file.txt'])
 
     git = utils.Git('/usr/bin/git', dufl_root)
     files = git.get_output('ls-files')
     assert 'the/path/file.txt' in files
 
 
-#def test_dufl_add_does_not_add_file_whose_name_matches_security_rule():
-#    runner = CliRunner()
-#    with runner.isolated_filesystem():
-#        here = os.getcwd()
-#        dufl_root = os.path.join(here, '.dufl')
-#        _prepare_empty_dufl_folder(dufl_root)
-#        file_to_add = os.path.join(here, 'one', 'two', 'three.txt')
-#        os.makedirs(os.path.dirname(file_to_add))
-#        with open(file_to_add, 'w') as f:
-#            f.write('hello world')
-#        with open(os.path.join(dufl_root, 'settings.yaml'), 'w') as f:
-#            f.write(yaml.dump({
-#                'suspicious_names': {
-#                    'three\.[^.]+$': 'no by name!'
-#                },
-#                'suspicious_content': {}
-#            }))
-#        with _mock_git(remote_exists=False) as git:
-#            r = runner.invoke(
-#                cli.cli, [
-#                    '-r', dufl_root,
-#                    'add', file_to_add
-#                ]
-#            )
-#            assert r.exit_code != 0
-#            assert 'no by name!' in r.output
-#            assert not os.path.isfile(os.path.join(
-#                dufl_root, 'root',
-#                re.sub('^/', '', file_to_add)
-#            ))
-#
-#def test_dufl_add_does_not_add_file_whose_content_matches_security_rule():
-#    runner = CliRunner()
-#    with runner.isolated_filesystem():
-#        here = os.getcwd()
-#        dufl_root = os.path.join(here, '.dufl')
-#        _prepare_empty_dufl_folder(dufl_root)
-#        file_to_add = os.path.join(here, 'one', 'two', 'three.txt')
-#        os.makedirs(os.path.dirname(file_to_add))
-#        with open(file_to_add, 'w') as f:
-#            f.write("hello\n here is a PRIVATE KEY ;)\n!")
-#        with open(os.path.join(dufl_root, 'settings.yaml'), 'w') as f:
-#            f.write(yaml.dump({
-#                'suspicious_names': {},
-#                'suspicious_content': {
-#                    'PRIVATE KEY': 'no by content!'
-#                }
-#            }))
-#        with _mock_git(remote_exists=False) as git:
-#            r = runner.invoke(
-#                cli.cli, [
-#                    '-r', dufl_root,
-#                    'add', file_to_add
-#                ]
-#            )
-#            assert r.exit_code != 0
-#            assert 'no by content!' in r.output
-#            assert not os.path.isfile(os.path.join(
-#                dufl_root, 'root',
-#                re.sub('^/', '', file_to_add)
-#            ))
-#
-#def test_dufl_add_uses_provided_commit_message():
-#    runner = CliRunner()
-#    with runner.isolated_filesystem():
-#        here = os.getcwd()
-#        dufl_root = os.path.join(here, '.dufl')
-#        _prepare_empty_dufl_folder(dufl_root)
-#        file_to_add = os.path.join(here, 'one', 'two', 'three.txt')
-#        os.makedirs(os.path.dirname(file_to_add))
-#        with open(os.path.join(here, file_to_add), 'w') as f:
-#            f.write('hello world')
-#        with _mock_git(remote_exists=False) as git:
-#            commit_call = call('commit', '-m', 'Good job!')
-#            r = runner.invoke(
-#                cli.cli, [
-#                    '-r', dufl_root,
-#                    'add', file_to_add,
-#                    '-m', 'Good job!'
-#                ]
-#            )
-#            assert commit_call in git.run.call_args_list
-#
-#def test_dufl_push_pushes_to_git():
-#    runner = CliRunner()
-#    with runner.isolated_filesystem():
-#        here = os.getcwd()
-#        dufl_root = os.path.join(here, '.dufl')
-#        _prepare_empty_dufl_folder(dufl_root)
-#        file_to_add = os.path.join(here, 'one', 'two', 'three.txt')
-#        os.makedirs(os.path.dirname(file_to_add))
-#        with open(os.path.join(here, file_to_add), 'w') as f:
-#            f.write('hello world')
-#        with _mock_git() as git:
-#            push_call = call('push')
-#            r = runner.invoke(
-#                cli.cli, [
-#                    '-r', dufl_root,
-#                    'push'
-#                ]
-#            )
-#            assert push_call in git.run.call_args_list
+def test_dufl_add_does_not_add_file_whose_name_matches_security_rule(cli_run, temp_folder):
+    dufl_root = os.path.join(temp_folder, '.dufl')
+
+    # Initialise repo, and create a settings.yaml with custon suspicious_name expressions
+    cli_run('-r', dufl_root, 'init')
+    create_files_in_folder(dufl_root, {
+        'settings.yaml': yaml.dump({
+            'suspicious_names': {
+                'file\.[^.]+$': 'refused on suspicious name'
+            },
+            'suspicious_content': {}
+        })
+    })
+
+    # Create the suspicious file and try to add it
+    file_names = create_files_in_folder(temp_folder, {
+        'path/to/file.txt': 'hello'
+    })
+    r = cli_run('-r', dufl_root, 'add', file_names['path/to/file.txt'])
+
+    assert r.exit_code != 0
+    assert 'refused on suspicious name' in r.output
+    assert not os.path.isfile(os.path.join(
+        dufl_root, 'root',
+        re.sub('^/', '', file_names['path/to/file.txt'])
+    ))
+
+def test_dufl_add_does_not_add_file_whose_content_matches_security_rule(cli_run, temp_folder):
+    dufl_root = os.path.join(temp_folder, '.dufl')
+
+    # Initialize repo, and create a settings.yaml with custom suspicous_content expressions
+    cli_run('-r', dufl_root, 'init')
+    create_files_in_folder(dufl_root, {
+        'settings.yaml': yaml.dump({
+            'suspicious_content': {
+                'PRIVATE KEY': 'refused on suspicious content'
+            },
+            'suspicious_name': {}
+        })
+    })
+
+    # Create the suspicious file and try to add it
+    file_names = create_files_in_folder(temp_folder, {
+        'path/to/file.txt': "hello\n here is a PRIVATE KEY ;)\n!"
+    })
+    r = cli_run('-r', dufl_root, 'add', file_names['path/to/file.txt'])
+
+    assert r.exit_code != 0
+    assert 'refused on suspicious content' in r.output
+    assert not os.path.isfile(os.path.join(
+        dufl_root, 'root',
+        re.sub('^/', '', file_names['path/to/file.txt']
+    )))
+
+def test_dufl_add_uses_provided_commit_message(cli_run, temp_folder):
+    dufl_root = os.path.join(temp_folder, '.dufl')
+    cli_run('-r', dufl_root, 'init')
+
+    file_names = create_files_in_folder(temp_folder, {
+        'the/path/file.txt': 'hello'
+    })
+
+    cli_run('-r', dufl_root, 'add', file_names['the/path/file.txt'],
+            '-m', 'Good job!')
+
+    git = utils.Git('/usr/bin/git', dufl_root)
+    logs = git.get_output('log')
+    assert 'Good job!' in logs
+
+
+def test_dufl_push_pushes_to_git(cli_run, temp_folder, remote_git_path):
+    dufl_root = os.path.join(temp_folder, '.dufl')
+    cli_run('-r', dufl_root, 'init', remote_git_path)
+
+    # Create and commit file
+    file_names = create_files_in_folder(temp_folder, {
+        'the/path/file.txt': 'hello'
+    })
+    cli_run('-r', dufl_root, 'add', file_names['the/path/file.txt'])
+
+    # Push
+    cli_run('-r', dufl_root, 'push')
+
+    # Now pull that remote repo somewhere else, and check the file is there.
+    repo_clone = os.path.join(temp_folder, 'clone')
+    os.makedirs(repo_clone)
+    git = utils.Git('/usr/bin/git', repo_clone)
+    git.run('init')
+    git.run('remote', 'add', 'origin', remote_git_path)
+    git.run('pull', 'origin', 'master')
+
+    assert os.path.isfile(os.path.join(
+        repo_clone, 'root',
+        re.sub('^/+', '', file_names['the/path/file.txt'])
+    ))

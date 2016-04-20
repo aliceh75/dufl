@@ -129,6 +129,30 @@ def _create_git_repo(request):
     return git
 
 
+def create_files_in_folder(root, content):
+    """ Create files with content in a given folder
+
+    Args:
+        root (str): The folder under which the files will be created
+        content (dict): Dictionary of file name/path to file content
+    Returns:
+        dict: Dictionary of file name/path (as defined in the 'content'
+            dict) to the absolute file name
+    """
+    result = {}
+    for name, data in content.items():
+        full_name = os.path.join(
+            root,
+            re.sub('^/+', '', name)
+        )
+        if not os.path.exists(os.path.dirname(full_name)):
+            os.makedirs(os.path.dirname(full_name))
+        with open(full_name, 'w') as f:
+            f.write(data)
+        result[name] = full_name
+    return result
+
+
 def add_content_to_remote_git_repo(remote, content):
     """ Add content to remote git repository
 

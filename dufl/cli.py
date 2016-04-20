@@ -131,4 +131,4 @@ def push(ctx):
     """ Push the git repo """
     dufl_root = ctx.obj['dufl_root']
     git = Git(ctx.obj.get('git', '/usr/bin/git'), dufl_root)
-    git.run('push')
+    git.run('push', 'origin', git.working_branch())
