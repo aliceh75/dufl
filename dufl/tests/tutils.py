@@ -158,23 +158,37 @@ def add_content_to_remote_git_repo(remote, content):
 
     Args:
         remote (str): Address of the remote repository
-        content (dict): Dictionary of file name to file content
+        content (dict): Dictionary of file name to file content.
+            sub-directories can be created using dicts as file
+            content.
     """
+    def _create_remote_git_files(temp_folder, content):
+        for name, data in content.items():
+            if isinstance(data, dict):
+                for sub_name, sub_data in data.items():
+                    _create_remote_git_files(temp_folder, {
+                        os.path.join(
+                            name,
+                            re.sub('^/+', '', sub_name)
+                        ): sub_data
+                    })
+            else:
+                repo_name = os.path.join(
+                    temp_folder,
+                    re.sub('^/+', '', name)
+                )
+                if not os.path.exists(os.path.dirname(repo_name)):
+                    os.makedirs(os.path.dirname(repo_name))
+                with open(repo_name, 'w') as f:
+                    f.write(data)
+                git.run('add', repo_name)
+
     temp_folder = tempfile.mkdtemp()
     git = utils.Git('/usr/bin/git', temp_folder)
     git.run('init')
     git.run('remote', 'add', 'origin', remote)
     git.run('pull', 'origin', 'master')
-    for name, data in content.items():
-        repo_name = os.path.join(
-            temp_folder,
-            re.sub('^/+', '', name)
-        )
-        if not os.path.exists(os.path.dirname(repo_name)):
-            os.makedirs(os.path.dirname(repo_name))
-        with open(repo_name, 'w') as f:
-            f.write(data)
-        git.run('add', repo_name)
+    _create_remote_git_files(temp_folder, content)
     git.run('commit', '-m', 'Added files to remote')
     git.run('push', 'origin', 'master')
     try:
@@ -198,12 +212,21 @@ def cli_run():
     - output_bytes: the command output (as bytes)
     - runner: the runner object that was invoked
 
+    If the code raises an exception other than SystemExit, it is
+    re-raised.
+
     Returns:
         click.testing.Result: The result
+    Raises:
+        Any exception raised by the code other than SystemExit
     """
     runner = CliRunner()
+
     def _run(*args):
-        return runner.invoke(cli.cli, args)
+        r = runner.invoke(cli.cli, args)
+        if r.exc_info and r.exc_info[0] != SystemExit:
+            raise r.exc_info[0], r.exc_info[1], r.exc_info[2]
+        return r
 
     return _run
 

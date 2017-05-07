@@ -58,6 +58,24 @@ class Git(object):
             raise GitError()
         return out
 
+    def test(self, *command):
+        """ Run a git command return True if it successed, False if it failed
+
+        Args:
+            *command (array of str): List of parameters to pass to git
+                executable
+        Returns:
+            bool: True if the command successed, False otherwise
+        """
+        try:
+            out = check_call([
+                self.git,
+                '-C', self.root
+            ] + list(command))
+        except CalledProcessError:
+            return False
+        return out == 0
+
     def working_branch(self):
         """ Return the working branch
 

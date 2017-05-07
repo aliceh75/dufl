@@ -2,6 +2,7 @@ import click
 import contextlib
 import os
 import re
+import time
 import yaml
 
 from click.testing import CliRunner
@@ -279,3 +280,226 @@ def test_dufl_push_pushes_to_git(cli_run, temp_folder, remote_git_path):
         repo_clone, 'root',
         re.sub('^/+', '', file_names['the/path/file.txt'])
     ))
+
+
+def test_dufl_checkout_checks_the_given_root_file_out_to_its_absolute_location(cli_run, temp_folder, remote_git_path):
+    # Create a file in the remote repo that will check out in the temp folder.
+    file_in_temp_folder = os.path.join(temp_folder, 'path/to/the_file.txt')
+    add_content_to_remote_git_repo(remote_git_path, {
+        'root': {
+            file_in_temp_folder: 'hello'
+        }
+    })
+
+    # Create the dufl folder
+    dufl_root = os.path.join(temp_folder, '.dufl')
+    cli_run('-r', dufl_root, 'init', remote_git_path)
+    cli_run('-r', dufl_root, 'pull')
+
+    # Checkout and test
+    assert not os.path.isfile(file_in_temp_folder)
+    cli_run('-r', dufl_root, 'checkout', file_in_temp_folder)
+
+    assert os.path.isfile(file_in_temp_folder)
+    with open(file_in_temp_folder, 'r') as f:
+        content = f.read()
+    assert content == 'hello'
+
+
+def test_dufl_checkout_checks_the_given_user_file_out_in_the_home_folder(cli_run, user_home, remote_git_path):
+    # Create a file in the remote repo that will check out in the home folder.
+    file_in_home_folder = os.path.join(user_home, 'path/to/the_file.txt')
+    add_content_to_remote_git_repo(remote_git_path, {
+        'home/path/to/the_file.txt': 'hello'
+    })
+
+    # Create the dufl folder
+    dufl_root = os.path.join(user_home, '.dufl')
+    cli_run('-r', dufl_root, 'init', remote_git_path)
+
+    # Checkout and test
+    assert not os.path.isfile(file_in_home_folder)
+    cli_run('-r', dufl_root, 'checkout', file_in_home_folder)
+
+    assert os.path.isfile(file_in_home_folder)
+    with open(file_in_home_folder, 'r') as f:
+        content = f.read()
+    assert content == 'hello'
+
+
+def test_dufl_checkout_does_not_overwrite_what_looks_like_a_changed_file(cli_run, temp_folder, remote_git_path):
+    file_in_temp_folder = os.path.join(temp_folder, 'path/to/the_fiel.txt')
+    add_content_to_remote_git_repo(remote_git_path, {
+        'root': {
+            file_in_temp_folder: 'hello'
+        }
+    })
+
+    # Timestamps have 1 sec granularity, so wait a bit!
+    time.sleep(1)
+
+    os.makedirs(os.path.dirname(file_in_temp_folder))
+    with open(file_in_temp_folder, 'w') as f:
+        f.write('changed after the file was comitted')
+
+    # Create the dufl folder
+    dufl_root = os.path.join(temp_folder, '.dufl')
+    cli_run('-r', dufl_root, 'init', remote_git_path)
+
+    # Checkout and test
+    r = cli_run('-r', dufl_root, 'checkout', file_in_temp_folder)
+
+    assert 'It looks like you have local modifications' in r.output
+    with open(file_in_temp_folder, 'r') as f:
+        content = f.read()
+    assert content == 'changed after the file was comitted'
+
+
+def test_dufl_checkout_does_not_overwrite_what_looks_like_a_changed_file_even_if_date_is_earlier_than_date_in_repository(cli_run, temp_folder, remote_git_path):
+    file_in_temp_folder = os.path.join(temp_folder, 'path/to/the_fiel.txt')
+
+    add_content_to_remote_git_repo(remote_git_path, {
+        'root': {
+            file_in_temp_folder: 'the file, as it originally was'
+        }
+    })
+
+    # Timestamps have 1 sec granularity, so wait a bit!
+    time.sleep(1)
+
+    os.makedirs(os.path.dirname(file_in_temp_folder))
+    with open(file_in_temp_folder, 'w') as f:
+        f.write('the file with some local changes')
+
+    # Timestamps have 1 sec granularity, so wait a bit!
+    time.sleep(1)
+
+    add_content_to_remote_git_repo(remote_git_path, {
+        'root': {
+            file_in_temp_folder: 'a different upstream update'
+        }
+    })
+
+    # Create the dufl folder
+    dufl_root = os.path.join(temp_folder, '.dufl')
+    cli_run('-r', dufl_root, 'init', remote_git_path)
+
+    # Checkout and test
+    r = cli_run('-r', dufl_root, 'checkout', file_in_temp_folder)
+
+    assert 'It looks like you have local modifications' in r.output
+    with open(file_in_temp_folder, 'r') as f:
+        content = f.read()
+    assert content == 'the file with some local changes'
+
+
+# TODO: We should have an analogous test where the repo itself didn't exist at the file's creation date
+# (here is exists because remote_git_path fixture creates it for us)
+def test_dufl_checkout_does_not_overwrite_what_looks_like_a_changed_file_even_if_date_is_earlier_than_creation_date_in_repository(cli_run, temp_folder, remote_git_path):
+    file_in_temp_folder = os.path.join(temp_folder, 'path/to/the_fiel.txt')
+
+    os.makedirs(os.path.dirname(file_in_temp_folder))
+    with open(file_in_temp_folder, 'w') as f:
+        f.write('the local file, predating the repo one')
+
+    # Timestamps have 1 sec granularity, so wait a bit!
+    time.sleep(1)
+
+    add_content_to_remote_git_repo(remote_git_path, {
+        'root': {
+            file_in_temp_folder: 'the repo file, not the same as the local one'
+        }
+    })
+
+    # Create the dufl folder
+    dufl_root = os.path.join(temp_folder, '.dufl')
+    cli_run('-r', dufl_root, 'init', remote_git_path)
+
+    # Checkout and test
+    r = cli_run('-r', dufl_root, 'checkout', file_in_temp_folder)
+
+    assert 'It looks like you have local modifications' in r.output
+    with open(file_in_temp_folder, 'r') as f:
+        content = f.read()
+    assert content == 'the local file, predating the repo one'
+
+
+def test_dufl_checkout_overwrites_files_that_do_not_appear_to_have_been_changed(cli_run, temp_folder, remote_git_path):
+    file_in_temp_folder = os.path.join(temp_folder, 'path/to/the_fiel.txt')
+    add_content_to_remote_git_repo(remote_git_path, {
+        'root': {
+            file_in_temp_folder: 'the file as it was in the repo'
+        }
+    })
+
+    # Timestamps have 1 sec granularity, so wait a bit!
+    time.sleep(1)
+
+    os.makedirs(os.path.dirname(file_in_temp_folder))
+    with open(file_in_temp_folder, 'w') as f:
+        f.write('the file as it was in the repo')
+
+    # Timestamps have 1 sec granularity, so wait a bit!
+    time.sleep(1)
+
+    add_content_to_remote_git_repo(remote_git_path, {
+        'root': {
+            file_in_temp_folder: 'updated repo version'
+        }
+    })
+
+    # Create the dufl folder.
+    dufl_root = os.path.join(temp_folder, '.dufl')
+    cli_run('-r', dufl_root, 'init', remote_git_path)
+
+    # Checkout and test
+    cli_run('-r', dufl_root, 'checkout', file_in_temp_folder)
+
+    with open(file_in_temp_folder, 'r') as f:
+        content = f.read()
+    assert content == 'updated repo version'
+
+
+def test_dufl_checkout_does_not_rely_on_reflog(cli_run, temp_folder, remote_git_path):
+    """ Dufl checkout inspects the content of a file at a given date.
+        One way to do this is to use the reflog with the
+        git show branch@{date} syntax. However this is not good as the
+        reflog does not contain all the commits. This test is there to ensure
+        we don't switch to using reflog in the future!
+    """
+    file_in_temp_folder = os.path.join(temp_folder, 'path/to/the_fiel.txt')
+    add_content_to_remote_git_repo(remote_git_path, {
+        'root': {
+            file_in_temp_folder: 'the file as it was in the repo'
+        }
+    })
+
+    # Timestamps have 1 sec granularity, so wait a bit!
+    time.sleep(1)
+
+    os.makedirs(os.path.dirname(file_in_temp_folder))
+    with open(file_in_temp_folder, 'w') as f:
+        f.write('the file as it was in the repo')
+
+    # Timestamps have 1 sec granularity, so wait a bit!
+    time.sleep(1)
+
+    add_content_to_remote_git_repo(remote_git_path, {
+        'root': {
+            file_in_temp_folder: 'updated repo version'
+        }
+    })
+
+    # Create the dufl folder. As we are creating the repo
+    # after the original commits, they will not show in
+    # the reflog - so the checkout would fail if we used
+    # the reflog
+    dufl_root = os.path.join(temp_folder, '.dufl')
+    cli_run('-r', dufl_root, 'init', remote_git_path)
+
+    # Checkout and test
+    cli_run('-r', dufl_root, 'checkout', file_in_temp_folder)
+
+    with open(file_in_temp_folder, 'r') as f:
+        content = f.read()
+    assert content == 'updated repo version'

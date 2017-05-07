@@ -1,11 +1,12 @@
-**dufl** is dotfile manager with a simplified git-like workflow.
+**dufl** is a dotfile manager with a simplified git-like workflow. It allows you to keep together in a single git repository files that are otherwise spread out across your filesystem. This is typically usefull for tracking configuration files (often known as dotfiles).
 
 **Still under development. Not all features described here are implemented! Wait for 0.1 release plz :)**
 
 Features:
 - Leaves your dotfiles intact (no moving & symlinking);
 - Simplified git-like workflow;
-- Detects when evalated privileges are needed, and invokes `sudo` as needed. No confusion about who the current user is;
+- Tolerant to users manipulating the git repository directly;
+- Detects when elevated privileges are needed, and invokes `sudo` as needed. No confusion about who the current user is;
 - Security checks (attempts to detect private ssh keys, etc. and prevents uploading them);
 - Home folder aware - so files added from a user's home folder are always checked back out to the home folder, even if the user names are different at the time of adding and checking out.
 
@@ -70,11 +71,18 @@ Commands are detailed in the `Commands` section.
 
 h2. Using dufl with sudo
 
-Because **dufl** stores and fetches (by default) information in the current user's folder, **extra care** must be taken when using `sudo` - as the current user then changes. It may be possible to use tools such as `logname` to get the original user name - but then, you might *want* to be using a different user!
+It is best **not to use sudo with dufl**. Because **dufl** is home folder aware, it needs to know who the current user is. When you use `sudo`, the current user changes - and so any operations are done *as the new user* (typically, `root`). There are ways by which **dufl** could check who the original user is (for example by using tools such as `logname`), however this would prevent users from using **dufl** as a different user if that is what they wish to do.
 
-Instead it is best **not to use sudo with dufl**. **dufl** will detect when it doesn't have write permission to a file you are checking out, and will at that point invoke `sudo` itself to ask for elevated privileges.
+**dufl** will detect when it doesn't have write permission to a file you are checking out, and will at that point invoke `sudo` itself to ask for elevated privileges.
 
 **FEATURE NOT YET IMPLEMENTED**
+
+<a name="keeping_track_of_deployed_filed"></a>
+h2. Keeping track of deployed files
+
+**dufl** does not keep track of which version of the file you have deployed to your file system. Being build this way means **dufl** is tolerant to changes you do on the git repository directly. If you want to do some advanced operation not handled by the **dufl** cli, you can do those manually using git - it will not bother **dufl**.
+
+The downside is that **dufl** cannot reliably tell whether you will be overwritting local changes or not when checking out a file. **dufl** will check the local modification time of the file you're checking out, and look at how the file was in the repository at that time. If it cannot be found or if there are changes, **dufl** will warn you you may be overwriting local changes. This approach is not fail proof - git commit timestamps have a granularity of one second, but the same file can be modified and commited multiple times within the same second, so **dufl** might end up looking at the wrong file version.
 
 h2. Commands
 
@@ -149,7 +157,10 @@ Example:
 dufl checkout ~/.vimrc
 ```
 
-Note that the file name is the name you wish to checkout - even if the file doesn't yet exist. Local modifications are overwriten. And lost. Forever.
+Note that the file name is the name you wish to checkout - even if the file doesn't yet exist.
+
+**Warning: this might overwrite local changes!** **dufl** does it's best to check if you have done local modifications to your files, but it is not 100% safe, so extra care must be taken. See [Keeping track of deployed files](#keeping_track_of_deployed_files) for more information on **dufl**'s approach.
+
 
 h3. dufl status
 
@@ -174,6 +185,10 @@ Example:
 ```
     dufl diff ~/.vimrc
 ```
+
+h2. Advanced operations
+
+Unless you've instructed **dufl** otherwise, the git repository is located under `~/.dufl`. Feel free to go there and manipulate the repository directly for more advanced operations, it will not trouble **dufl**.
 
 h2. Settings
 

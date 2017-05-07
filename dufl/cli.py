@@ -4,6 +4,8 @@ import re
 import shutil
 import yaml
 
+from datetime import datetime
+
 from . import defaults
 from .app import get_dufl_file_path, create_initial_context
 from .app import SettingsBroken
@@ -132,3 +134,74 @@ def push(ctx):
     dufl_root = ctx.obj['dufl_root']
     git = Git(ctx.obj.get('git', '/usr/bin/git'), dufl_root)
     git.run('push', 'origin', git.working_branch())
+
+
+@cli.command('checkout')
+@click.argument('file_name')
+@click.pass_context
+def checkout(ctx, file_name):
+    """ Copy the given file from the repository to the local file system.
+
+    This will attempt to identify local changes, but it's not foolproof,
+    so make sure you know what you are doing.
+    """
+    dufl_root = ctx.obj['dufl_root']
+
+    checked_out_file = os.path.abspath(file_name)
+    dufl_file = get_dufl_file_path(checked_out_file, ctx.obj)
+
+    if not os.path.exists(dufl_file):
+        click.echo('The file you want to checkout does not exist. Maybe run dufl fetch first?', err=True)
+        exit(1)
+
+    if os.path.exists(checked_out_file):
+        # Try our best to see if it's been modified
+        git = Git(ctx.obj.get('git', '/usr/bin/git'), dufl_root)
+        last_modified_ts = os.path.getmtime(checked_out_file)
+        last_modified = datetime.fromtimestamp(
+            last_modified_ts
+        ).strftime('%Y-%m-%d %H:%M:%S')
+        commit_at_date = re.sub('[^a-zA-Z0-9]', '', git.get_output(
+            'rev-list', '-1',
+            '--before=%s' % last_modified,
+            git.working_branch()
+        ))
+        file_exists_at_commit = False
+        if len(commit_at_date) > 0:
+            file_exists_at_commit = git.test(
+                'rev-parse', '--verify',
+                '%s:%s' % (
+                    commit_at_date,
+                    os.path.relpath(dufl_file, dufl_root)
+                )
+            )
+        # If there is no commit at date, or the file didnt' exist at the commit,
+        # assume first version of the file ever.
+        if not file_exists_at_commit:
+            commit_at_date = re.sub('[^a-zA-Z0-9]', '', git.get_output(
+                'log', '--diff-filter=A', '--pretty=format:\'%H\'',
+                '--', os.path.relpath(dufl_file, dufl_root)
+            ))
+            if len(commit_at_date) == 0:
+                click.echo('File %s exists, but does not seem to be in the git repository?' % dufl_file, err=True)
+                exit(1)
+
+        # Note: do not be tempted to use 'git show branch@{date}' syntax,
+        # as that relies on the reflog which does not contain all commits.
+        content_at_date = git.get_output(
+            'show',
+            '%s:%s' % (
+                commit_at_date,
+                os.path.relpath(dufl_file, dufl_root)
+            )
+        )
+        with open(checked_out_file, 'r') as f:
+            content_now = f.read()
+        if content_at_date != content_now:
+            click.echo('It looks like you have local modifications. Will exit for now.', err=True)
+            exit(1)
+
+    click.echo('Copying %s to %s...' % (dufl_file, checked_out_file))
+    if not os.path.exists(os.path.dirname(checked_out_file)):
+        os.makedirs(os.path.dirname(checked_out_file))
+    shutil.copy(dufl_file, checked_out_file)
